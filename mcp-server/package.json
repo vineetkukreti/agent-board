@@ -1,0 +1,26 @@
+{
+  "name": "agent-board-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for Agent Board — AI agent fleet management",
+  "main": "index.js",
+  "type": "module",
+  "bin": {
+    "agent-board-mcp": "./index.js"
+  },
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.28.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "mcp",
+    "agent-board",
+    "claude",
+    "ai-agents"
+  ],
+  "license": "MIT"
+}
