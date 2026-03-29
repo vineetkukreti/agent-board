@@ -45,7 +45,7 @@ router = APIRouter()
 # Valid status transitions
 _TRANSITIONS: dict[str, set[str]] = {
     "todo":        {"in_progress", "cancelled"},
-    "in_progress": {"review", "blocked", "todo", "cancelled"},
+    "in_progress": {"review", "done", "blocked", "todo", "cancelled"},
     "blocked":     {"in_progress", "cancelled"},
     "review":      {"done", "in_progress", "cancelled"},
     "done":        set(),
