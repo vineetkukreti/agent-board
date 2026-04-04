@@ -155,6 +155,62 @@ async def create_sprint(
     return row_to_dict(row)
 
 
+class BulkDelete(BaseModel):
+    sprint_ids: list[int]
+
+
+@router.post("/bulk/delete")
+async def bulk_delete(
+    body: BulkDelete,
+    db: aiosqlite.Connection = Depends(get_db),
+    _current=Depends(require_auth),
+):
+    if not body.sprint_ids:
+        raise HTTPException(status_code=422, detail="sprint_ids cannot be empty")
+
+    # Don't allow deleting active sprints
+    placeholders = ",".join("?" * len(body.sprint_ids))
+    cursor = await db.execute(
+        f"SELECT id FROM sprints WHERE id IN ({placeholders}) AND status = 'active'",
+        body.sprint_ids,
+    )
+    active = await cursor.fetchall()
+    if active:
+        raise HTTPException(status_code=422, detail="Cannot delete active sprints")
+
+    # Cascade: get all ticket IDs in these sprints
+    cursor = await db.execute(
+        f"SELECT id FROM tickets WHERE sprint_id IN ({placeholders})",
+        body.sprint_ids,
+    )
+    ticket_ids = [r["id"] for r in await cursor.fetchall()]
+
+    if ticket_ids:
+        t_ph = ",".join("?" * len(ticket_ids))
+        # Delete ticket children: comments, blockers, ticket_metrics, sessions, tool_usage
+        await db.execute(f"DELETE FROM comments WHERE ticket_id IN ({t_ph})", ticket_ids)
+        await db.execute(f"DELETE FROM blockers WHERE ticket_id IN ({t_ph})", ticket_ids)
+        await db.execute(f"DELETE FROM ticket_metrics WHERE ticket_id IN ({t_ph})", ticket_ids)
+        await db.execute(f"DELETE FROM tool_usage_log WHERE ticket_id IN ({t_ph})", ticket_ids)
+        await db.execute(f"DELETE FROM agent_sessions WHERE ticket_id IN ({t_ph})", ticket_ids)
+        await db.execute(f"DELETE FROM tickets WHERE id IN ({t_ph})", ticket_ids)
+
+    # Delete activity logs for these sprints
+    await db.execute(
+        f"DELETE FROM activity_log WHERE entity_type = 'sprint' AND entity_id IN ({placeholders})",
+        body.sprint_ids,
+    )
+
+    # Delete the sprints
+    await db.execute(
+        f"DELETE FROM sprints WHERE id IN ({placeholders})",
+        body.sprint_ids,
+    )
+    await db.commit()
+
+    return {"deleted": len(body.sprint_ids), "tickets_deleted": len(ticket_ids)}
+
+
 @router.get("/{sprint_id}")
 async def get_sprint(sprint_id: int, db: aiosqlite.Connection = Depends(get_db)):
     cursor = await db.execute(
@@ -381,3 +437,117 @@ async def sprint_board(sprint_id: int, db: aiosqlite.Connection = Depends(get_db
         "board": board,
         "total": len(rows),
     }
+
+
+# ---------------------------------------------------------------------------
+# Burndown, Velocity & Snapshots
+# ---------------------------------------------------------------------------
+
+
+@router.post("/{sprint_id}/snapshot")
+async def take_snapshot(sprint_id: int, db: aiosqlite.Connection = Depends(get_db)):
+    """Take a snapshot of current ticket statuses for burndown chart."""
+    from datetime import datetime, timezone
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+    cursor = await db.execute("SELECT id FROM sprints WHERE id = ?", (sprint_id,))
+    if await cursor.fetchone() is None:
+        raise HTTPException(status_code=404, detail="Sprint not found")
+
+    cursor = await db.execute(
+        "SELECT status, COUNT(*) as cnt FROM tickets WHERE sprint_id = ? GROUP BY status",
+        (sprint_id,),
+    )
+    counts = {r["status"]: r["cnt"] for r in await cursor.fetchall()}
+    total = sum(counts.values())
+
+    await db.execute(
+        """INSERT OR REPLACE INTO sprint_snapshots
+           (sprint_id, date, todo, in_progress, review, done, blocked, total, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (sprint_id, today, counts.get("todo", 0), counts.get("in_progress", 0),
+         counts.get("review", 0), counts.get("done", 0), counts.get("blocked", 0), total, now),
+    )
+    await db.commit()
+    return {"ok": True, "date": today, "total": total, "counts": counts}
+
+
+@router.get("/{sprint_id}/burndown")
+async def get_burndown(sprint_id: int, db: aiosqlite.Connection = Depends(get_db)):
+    """Return daily snapshots for burndown chart."""
+    cursor = await db.execute(
+        "SELECT id, start_date, end_date FROM sprints WHERE id = ?", (sprint_id,)
+    )
+    sprint = await cursor.fetchone()
+    if sprint is None:
+        raise HTTPException(status_code=404, detail="Sprint not found")
+
+    cursor = await db.execute(
+        "SELECT date, todo, in_progress, review, done, blocked, total FROM sprint_snapshots WHERE sprint_id = ? ORDER BY date",
+        (sprint_id,),
+    )
+    snapshots = [dict(r) for r in await cursor.fetchall()]
+
+    # Calculate ideal burndown line
+    ideal = []
+    if sprint["start_date"] and sprint["end_date"] and snapshots:
+        from datetime import datetime, timedelta
+        start = datetime.strptime(sprint["start_date"], "%Y-%m-%d")
+        end = datetime.strptime(sprint["end_date"], "%Y-%m-%d")
+        total_days = (end - start).days
+        total_tickets = snapshots[0]["total"] if snapshots else 0
+        if total_days > 0:
+            for i in range(total_days + 1):
+                day = start + timedelta(days=i)
+                remaining = total_tickets - (total_tickets * i / total_days)
+                ideal.append({"date": day.strftime("%Y-%m-%d"), "remaining": round(remaining, 1)})
+
+    # Actual remaining = total - done
+    actual = []
+    for s in snapshots:
+        actual.append({"date": s["date"], "remaining": s["total"] - s["done"], **s})
+
+    return {
+        "sprint_id": sprint_id,
+        "start_date": sprint["start_date"],
+        "end_date": sprint["end_date"],
+        "ideal": ideal,
+        "actual": actual,
+    }
+
+
+@router.get("/velocity/summary")
+async def velocity_summary(
+    project_id: Optional[int] = None,
+    db: aiosqlite.Connection = Depends(get_db),
+):
+    """Return velocity data across completed sprints."""
+    query = """
+        SELECT s.id, s.name, s.start_date, s.end_date, s.status,
+               COUNT(t.id) as total_tickets,
+               SUM(CASE WHEN t.status = 'done' THEN 1 ELSE 0 END) as done_tickets,
+               SUM(CASE WHEN t.priority = 'p0' THEN 4
+                        WHEN t.priority = 'p1' THEN 3
+                        WHEN t.priority = 'p2' THEN 2
+                        WHEN t.priority = 'p3' THEN 1 ELSE 2 END) as total_points,
+               SUM(CASE WHEN t.status = 'done' THEN
+                   CASE WHEN t.priority = 'p0' THEN 4
+                        WHEN t.priority = 'p1' THEN 3
+                        WHEN t.priority = 'p2' THEN 2
+                        WHEN t.priority = 'p3' THEN 1 ELSE 2 END
+                   ELSE 0 END) as done_points
+        FROM sprints s
+        LEFT JOIN tickets t ON t.sprint_id = s.id
+        WHERE 1=1
+    """
+    params = []
+    if project_id:
+        query += " AND s.project_id = ?"
+        params.append(project_id)
+    query += " GROUP BY s.id ORDER BY s.start_date DESC LIMIT 20"
+
+    cursor = await db.execute(query, params)
+    sprints = [dict(r) for r in await cursor.fetchall()]
+
+    return {"sprints": sprints}

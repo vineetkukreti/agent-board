@@ -25,6 +25,11 @@ export async function deleteTeam(id) {
   return data
 }
 
+export async function bulkDeleteTeams(data) {
+  const { data: resp } = await axiosInstance.post('/teams/bulk/delete', data)
+  return resp
+}
+
 export async function getTeamMembers(id) {
   const { data } = await axiosInstance.get(`/teams/${id}/members`)
   return data

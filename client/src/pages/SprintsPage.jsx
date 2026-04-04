@@ -1,12 +1,26 @@
 import { useState } from 'react'
-import { format } from 'date-fns'
-import { Zap, Plus, X, Play, CheckCircle, Calendar } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
+import { format, differenceInDays, differenceInCalendarDays } from 'date-fns'
+import {
+  Zap, Plus, X, Play, CheckCircle, Calendar, Clock, Users,
+  Ticket, BarChart3, Target, AlertTriangle, Circle, Pause, Trash2,
+} from 'lucide-react'
+import clsx from 'clsx'
 import toast from 'react-hot-toast'
 import {
+  ResponsiveContainer, LineChart, Line, BarChart, Bar,
+  XAxis, YAxis, Tooltip, CartesianGrid,
+} from 'recharts'
+import {
   useSprints,
+  useSprint,
+  useSprintBoard,
+  useSprintBurndown,
+  useVelocity,
   useCreateSprint,
   useActivateSprint,
   useCompleteSprint,
+  useBulkDeleteSprints,
 } from '../hooks/useSprints'
 import { useProjects } from '../hooks/useProjects'
 
@@ -26,20 +40,30 @@ function safeFormat(dateStr) {
 
 // ─── Sprint Card ──────────────────────────────────────────────────────────────
 
-function SprintCard({ sprint, onActivate, onComplete }) {
+function SprintCard({ sprint, onActivate, onComplete, onClick, selected, onToggleSelect }) {
   const ss = SPRINT_STATUS[sprint.status] ?? SPRINT_STATUS.planning
   const isActive = sprint.status === 'active'
   const isPlanning = sprint.status === 'planning'
 
   return (
-    <div
-      className="rounded-xl border p-4 transition-all"
-      style={{
-        backgroundColor: 'var(--bg-card)',
-        borderColor: isActive ? 'var(--success)' : 'var(--border)',
-        boxShadow: isActive ? '0 0 0 1px rgba(16,185,129,0.3)' : undefined,
-      }}
-    >
+    <div className="flex items-stretch gap-2">
+      <div className="flex items-center pt-1 shrink-0">
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={(e) => { e.stopPropagation(); onToggleSelect(sprint.id) }}
+          className="w-4 h-4 rounded cursor-pointer accent-[var(--accent)]"
+        />
+      </div>
+      <div
+        onClick={() => onClick(sprint)}
+        className="rounded-xl border p-4 transition-all cursor-pointer hover:border-[var(--accent)] flex-1 min-w-0"
+        style={{
+          backgroundColor: 'var(--bg-card)',
+          borderColor: isActive ? 'var(--success)' : 'var(--border)',
+          boxShadow: isActive ? '0 0 0 1px rgba(16,185,129,0.3)' : undefined,
+        }}
+      >
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap mb-1">
@@ -60,7 +84,7 @@ function SprintCard({ sprint, onActivate, onComplete }) {
         <div className="flex items-center gap-1.5 shrink-0">
           {isPlanning && (
             <button
-              onClick={() => onActivate(sprint.id)}
+              onClick={(e) => { e.stopPropagation(); onActivate(sprint.id) }}
               className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-md font-medium transition-colors"
               style={{
                 backgroundColor: 'rgba(16,185,129,0.15)',
@@ -73,7 +97,7 @@ function SprintCard({ sprint, onActivate, onComplete }) {
           )}
           {isActive && (
             <button
-              onClick={() => onComplete(sprint.id)}
+              onClick={(e) => { e.stopPropagation(); onComplete(sprint.id) }}
               className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-md font-medium transition-colors"
               style={{
                 backgroundColor: 'rgba(59,130,246,0.15)',
@@ -105,8 +129,347 @@ function SprintCard({ sprint, onActivate, onComplete }) {
         </div>
         <span>{sprint.ticket_count ?? 0} ticket{sprint.ticket_count !== 1 ? 's' : ''}</span>
       </div>
+      </div>
     </div>
   )
+}
+
+// ─── Sprint Detail Modal ──────────────────────────────────────────────────────
+
+const STATUS_ICONS = {
+  todo: <Circle size={12} />,
+  in_progress: <Play size={12} />,
+  review: <Pause size={12} />,
+  done: <CheckCircle size={12} />,
+  blocked: <AlertTriangle size={12} />,
+  cancelled: <X size={12} />,
+}
+
+const STATUS_COLORS = {
+  todo: '#64748b',
+  in_progress: 'var(--accent)',
+  review: 'var(--warning)',
+  done: 'var(--success)',
+  blocked: 'var(--danger)',
+  cancelled: '#374151',
+}
+
+const BurndownTooltip = ({ active, payload, label }) => {
+  if (!active || !payload?.length) return null
+  return (
+    <div className="rounded-lg px-3 py-2 text-xs border shadow-lg"
+      style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)', color: 'var(--text-primary)' }}>
+      <p className="font-medium mb-1">{label}</p>
+      {payload.map((p) => (
+        <p key={p.dataKey} style={{ color: p.color }}>{p.name}: {Math.round(p.value)}</p>
+      ))}
+    </div>
+  )
+}
+
+function SprintDetailModal({ sprintId, onClose }) {
+  const { data: sprint } = useSprint(sprintId)
+  const { data: board } = useSprintBoard(sprintId)
+  const { data: burndown } = useSprintBurndown(sprintId)
+
+  if (!sprint) return null
+
+  const ss = SPRINT_STATUS[sprint.status] ?? SPRINT_STATUS.planning
+  const totalTickets = board?.total ?? sprint.ticket_count ?? 0
+
+  // Calculate stats from board data
+  const boardData = board?.board ?? {}
+  const doneCount = boardData.done?.length ?? 0
+  const inProgressCount = boardData.in_progress?.length ?? 0
+  const reviewCount = boardData.review?.length ?? 0
+  const todoCount = boardData.todo?.length ?? 0
+  const blockedCount = boardData.blocked?.length ?? 0
+  const progressPct = totalTickets > 0 ? Math.round((doneCount / totalTickets) * 100) : 0
+
+  // Duration
+  let durationText = '—'
+  let daysLeft = null
+  let totalDays = null
+  if (sprint.start_date && sprint.end_date) {
+    try {
+      const start = new Date(sprint.start_date)
+      const end = new Date(sprint.end_date)
+      totalDays = differenceInCalendarDays(end, start)
+      daysLeft = differenceInCalendarDays(end, new Date())
+      durationText = `${totalDays} days`
+    } catch {}
+  }
+
+  // Collect all tickets with assignees for the team section
+  const allTickets = Object.values(boardData).flat()
+  const agentMap = {}
+  allTickets.forEach((t) => {
+    const name = t.assignee_name || 'Unassigned'
+    if (!agentMap[name]) agentMap[name] = { total: 0, done: 0, in_progress: 0, review: 0, todo: 0, blocked: 0 }
+    agentMap[name].total++
+    agentMap[name][t.status] = (agentMap[name][t.status] || 0) + 1
+  })
+
+  return (
+    <>
+      <div className="fixed inset-0 z-30 bg-black/60" onClick={onClose} />
+      <div className="fixed inset-y-0 right-0 z-40 w-full max-w-2xl border-l shadow-2xl overflow-y-auto"
+        style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}>
+
+        {/* Header */}
+        <div className="p-6 border-b" style={{ borderColor: 'var(--border)' }}>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <Zap size={16} style={{ color: ss.color }} />
+                <span className="text-xs px-2 py-0.5 rounded-full font-medium"
+                  style={{ backgroundColor: ss.bg, color: ss.color }}>
+                  {ss.label}
+                </span>
+              </div>
+              <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
+                {sprint.name}
+              </h2>
+              {sprint.project_name && (
+                <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
+                  {sprint.project_name}
+                </p>
+              )}
+            </div>
+            <button onClick={onClose} className="p-1.5 rounded-md hover:bg-[var(--bg-hover)]"
+              style={{ color: 'var(--text-secondary)' }}>
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+
+        <div className="p-6 space-y-6">
+          {/* Sprint at a Glance */}
+          <div className="rounded-lg border p-4" style={{ backgroundColor: 'var(--bg-primary)', borderColor: 'var(--border)' }}>
+            <h3 className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-secondary)' }}>
+              Sprint at a Glance
+            </h3>
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div className="flex items-center gap-2">
+                <Calendar size={14} style={{ color: 'var(--text-secondary)' }} />
+                <span style={{ color: 'var(--text-secondary)' }}>Dates</span>
+              </div>
+              <span style={{ color: 'var(--text-primary)' }}>
+                {safeFormat(sprint.start_date)} → {safeFormat(sprint.end_date)}
+                {totalDays && <span className="text-xs ml-1" style={{ color: 'var(--text-secondary)' }}>({totalDays} days)</span>}
+              </span>
+
+              <div className="flex items-center gap-2">
+                <Clock size={14} style={{ color: 'var(--text-secondary)' }} />
+                <span style={{ color: 'var(--text-secondary)' }}>Time Left</span>
+              </div>
+              <span style={{ color: daysLeft !== null && daysLeft <= 3 ? 'var(--danger)' : 'var(--text-primary)' }}>
+                {daysLeft !== null ? (daysLeft > 0 ? `${daysLeft} days remaining` : daysLeft === 0 ? 'Ends today!' : 'Overdue') : '—'}
+              </span>
+
+              <div className="flex items-center gap-2">
+                <Ticket size={14} style={{ color: 'var(--text-secondary)' }} />
+                <span style={{ color: 'var(--text-secondary)' }}>Tickets</span>
+              </div>
+              <span style={{ color: 'var(--text-primary)' }}>
+                {totalTickets} total · {doneCount} done
+              </span>
+
+              <div className="flex items-center gap-2">
+                <Users size={14} style={{ color: 'var(--text-secondary)' }} />
+                <span style={{ color: 'var(--text-secondary)' }}>Team</span>
+              </div>
+              <span style={{ color: 'var(--text-primary)' }}>
+                {Object.keys(agentMap).filter(n => n !== 'Unassigned').length} agents
+              </span>
+            </div>
+          </div>
+
+          {/* Goal */}
+          {sprint.goal && (
+            <div className="rounded-lg border p-4" style={{ backgroundColor: 'var(--bg-primary)', borderColor: 'var(--border)' }}>
+              <div className="flex items-center gap-2 mb-2">
+                <Target size={14} style={{ color: 'var(--accent)' }} />
+                <h3 className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
+                  Sprint Goal
+                </h3>
+              </div>
+              <p className="text-sm leading-relaxed" style={{ color: 'var(--text-primary)' }}>
+                {sprint.goal}
+              </p>
+            </div>
+          )}
+
+          {/* Progress bar */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
+                Progress
+              </h3>
+              <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{progressPct}%</span>
+            </div>
+            <div className="h-2.5 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--bg-hover)' }}>
+              <div className="h-full rounded-full transition-all duration-500"
+                style={{ width: `${progressPct}%`, backgroundColor: progressPct === 100 ? 'var(--success)' : 'var(--accent)' }} />
+            </div>
+            <div className="flex gap-4 mt-2">
+              {[
+                { label: 'Done', count: doneCount, color: 'var(--success)' },
+                { label: 'In Progress', count: inProgressCount, color: 'var(--accent)' },
+                { label: 'Review', count: reviewCount, color: 'var(--warning)' },
+                { label: 'Todo', count: todoCount, color: '#64748b' },
+                { label: 'Blocked', count: blockedCount, color: 'var(--danger)' },
+              ].filter(s => s.count > 0).map(s => (
+                <div key={s.label} className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: s.color }} />
+                  <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{s.count} {s.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Burndown Chart */}
+          {burndown && (burndown.actual?.length > 0 || burndown.ideal?.length > 0) && (
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-secondary)' }}>
+                Burndown
+              </h3>
+              <div className="rounded-lg border p-4" style={{ backgroundColor: 'var(--bg-primary)', borderColor: 'var(--border)' }}>
+                <ResponsiveContainer width="100%" height={200}>
+                  <LineChart>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" />
+                    <XAxis
+                      dataKey="date"
+                      data={burndown.ideal?.length > burndown.actual?.length ? burndown.ideal : burndown.actual}
+                      tick={{ fontSize: 10, fill: '#64748B' }}
+                      axisLine={false}
+                      tickLine={false}
+                      tickFormatter={(d) => d?.slice(5) || ''}
+                    />
+                    <YAxis
+                      tick={{ fontSize: 10, fill: '#64748B' }}
+                      axisLine={false}
+                      tickLine={false}
+                      width={30}
+                    />
+                    <Tooltip content={<BurndownTooltip />} />
+                    {burndown.ideal?.length > 0 && (
+                      <Line
+                        data={burndown.ideal}
+                        dataKey="remaining"
+                        name="Ideal"
+                        stroke="#334155"
+                        strokeDasharray="5 5"
+                        dot={false}
+                        strokeWidth={2}
+                      />
+                    )}
+                    {burndown.actual?.length > 0 && (
+                      <Line
+                        data={burndown.actual}
+                        dataKey="remaining"
+                        name="Actual"
+                        stroke="#22D3EE"
+                        dot={{ r: 3, fill: '#22D3EE' }}
+                        strokeWidth={2}
+                      />
+                    )}
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+
+          {/* Team Allocation */}
+          {Object.keys(agentMap).length > 0 && (
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-secondary)' }}>
+                Team Allocation
+              </h3>
+              <div className="space-y-2">
+                {Object.entries(agentMap).sort((a, b) => b[1].total - a[1].total).map(([name, stats]) => (
+                  <div key={name} className="flex items-center gap-3 rounded-lg px-3 py-2"
+                    style={{ backgroundColor: 'var(--bg-primary)' }}>
+                    <span className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
+                      style={{ backgroundColor: 'var(--accent)', color: 'white' }}>
+                      {name.charAt(0).toUpperCase()}
+                    </span>
+                    <span className="text-sm font-medium flex-1 min-w-0 truncate" style={{ color: 'var(--text-primary)' }}>
+                      {name}
+                    </span>
+                    <span className="text-xs shrink-0" style={{ color: 'var(--text-secondary)' }}>
+                      {stats.total} ticket{stats.total !== 1 ? 's' : ''}
+                    </span>
+                    <div className="flex gap-1 shrink-0">
+                      {stats.done > 0 && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ backgroundColor: 'rgba(16,185,129,0.15)', color: 'var(--success)' }}>
+                          {stats.done} done
+                        </span>
+                      )}
+                      {stats.in_progress > 0 && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ backgroundColor: 'rgba(59,130,246,0.15)', color: 'var(--accent)' }}>
+                          {stats.in_progress} wip
+                        </span>
+                      )}
+                      {stats.blocked > 0 && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ backgroundColor: 'rgba(239,68,68,0.15)', color: 'var(--danger)' }}>
+                          {stats.blocked} blocked
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Tickets by Status */}
+          {Object.entries(boardData).filter(([, tickets]) => tickets.length > 0).map(([status, tickets]) => (
+            <div key={status}>
+              <div className="flex items-center gap-2 mb-2">
+                <span style={{ color: STATUS_COLORS[status] || '#64748b' }}>{STATUS_ICONS[status] || <Circle size={12} />}</span>
+                <h3 className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
+                  {status.replace('_', ' ')} ({tickets.length})
+                </h3>
+              </div>
+              <div className="space-y-1.5">
+                {tickets.map((t) => (
+                  <div key={t.id} className="flex items-center gap-3 rounded-lg px-3 py-2 border"
+                    style={{ backgroundColor: 'var(--bg-primary)', borderColor: 'var(--border)' }}>
+                    <span className="text-[10px] font-mono shrink-0" style={{ color: 'var(--text-secondary)' }}>#{t.id}</span>
+                    <span className="text-sm flex-1 min-w-0 truncate" style={{ color: 'var(--text-primary)' }}>
+                      {t.title}
+                    </span>
+                    {t.assignee_name && (
+                      <span className="text-xs shrink-0" style={{ color: 'var(--text-secondary)' }}>
+                        {t.assignee_name}
+                      </span>
+                    )}
+                    {t.priority && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0"
+                        style={{
+                          backgroundColor: (PRIORITY_STYLES[t.priority] || {}).bg || 'var(--bg-hover)',
+                          color: (PRIORITY_STYLES[t.priority] || {}).color || 'var(--text-secondary)',
+                        }}>
+                        {t.priority?.toUpperCase()}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </>
+  )
+}
+
+const PRIORITY_STYLES = {
+  p0: { label: 'P0', bg: 'rgba(239,68,68,0.2)',   color: 'var(--danger)' },
+  p1: { label: 'P1', bg: 'rgba(245,158,11,0.2)',  color: 'var(--warning)' },
+  p2: { label: 'P2', bg: 'rgba(59,130,246,0.2)',  color: 'var(--accent)' },
+  p3: { label: 'P3', bg: 'rgba(107,114,128,0.2)', color: '#6b7280' },
 }
 
 // ─── Create Modal ─────────────────────────────────────────────────────────────
@@ -267,7 +630,10 @@ function CreateSprintModal({ onClose, projects }) {
 
 export default function SprintsPage() {
   const [showCreate, setShowCreate] = useState(false)
-  const [projectFilter, setProjectFilter] = useState('')
+  const [selectedSprintId, setSelectedSprintId] = useState(null)
+  const [selected, setSelected] = useState(() => new Set())
+  const [searchParams, setSearchParams] = useSearchParams()
+  const projectFilter = searchParams.get('project_id') ?? ''
 
   const { data: sprintData, isLoading } = useSprints(
     projectFilter ? { project_id: projectFilter } : {}
@@ -276,6 +642,7 @@ export default function SprintsPage() {
 
   const activateSprint = useActivateSprint()
   const completeSprint = useCompleteSprint()
+  const bulkDelete = useBulkDeleteSprints()
 
   const sprints = sprintData?.data ?? []
   const projects = projectData?.data ?? []
@@ -295,6 +662,32 @@ export default function SprintsPage() {
       toast.success('Sprint completed')
     } catch (err) {
       toast.error(err.response?.data?.detail ?? 'Failed to complete')
+    }
+  }
+
+  function toggleSelect(id) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  async function handleBulkDelete() {
+    if (selected.size === 0) return
+    const ids = [...selected]
+    const hasActive = sprints.some((s) => ids.includes(s.id) && s.status === 'active')
+    if (hasActive) {
+      toast.error('Cannot delete active sprints — deselect them first')
+      return
+    }
+    try {
+      await bulkDelete.mutateAsync({ sprint_ids: ids })
+      toast.success(`Deleted ${ids.length} sprint${ids.length !== 1 ? 's' : ''}`)
+      setSelected(new Set())
+    } catch (err) {
+      toast.error(err.response?.data?.detail ?? 'Failed to delete sprints')
     }
   }
 
@@ -324,7 +717,7 @@ export default function SprintsPage() {
         <div className="flex items-center gap-2">
           <select
             value={projectFilter}
-            onChange={(e) => setProjectFilter(e.target.value)}
+            onChange={(e) => setSearchParams(prev => { const p = new URLSearchParams(prev); if (e.target.value) p.set('project_id', e.target.value); else p.delete('project_id'); return p })}
             className="px-3 py-1.5 rounded-md text-sm outline-none"
             style={{
               backgroundColor: 'var(--bg-card)',
@@ -348,6 +741,32 @@ export default function SprintsPage() {
           </button>
         </div>
       </div>
+
+      {selected.size > 0 && (
+        <div className="flex items-center gap-3 px-4 py-2.5 rounded-lg border"
+          style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--accent)' }}>
+          <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+            {selected.size} selected
+          </span>
+          <button
+            onClick={handleBulkDelete}
+            disabled={bulkDelete.isPending}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors disabled:opacity-50"
+            style={{ backgroundColor: 'rgba(239,68,68,0.15)', color: 'var(--danger)' }}
+          >
+            <Trash2 size={13} />
+            {bulkDelete.isPending ? 'Deleting...' : 'Delete'}
+          </button>
+          <button
+            onClick={() => setSelected(new Set())}
+            className="ml-auto flex items-center gap-1 text-xs px-2 py-1 rounded-md"
+            style={{ color: 'var(--text-secondary)' }}
+          >
+            <X size={13} />
+            Clear
+          </button>
+        </div>
+      )}
 
       {isLoading ? (
         <div className="space-y-4">
@@ -386,6 +805,9 @@ export default function SprintsPage() {
                     sprint={s}
                     onActivate={handleActivate}
                     onComplete={handleComplete}
+                    onClick={(sp) => setSelectedSprintId(sp.id)}
+                    selected={selected.has(s.id)}
+                    onToggleSelect={toggleSelect}
                   />
                 ))}
               </div>
@@ -398,6 +820,13 @@ export default function SprintsPage() {
         <CreateSprintModal
           onClose={() => setShowCreate(false)}
           projects={projects}
+        />
+      )}
+
+      {selectedSprintId && (
+        <SprintDetailModal
+          sprintId={selectedSprintId}
+          onClose={() => setSelectedSprintId(null)}
         />
       )}
     </div>

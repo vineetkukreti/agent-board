@@ -7,6 +7,9 @@ import {
   activateSprint,
   completeSprint,
   getSprintBoard,
+  bulkDeleteSprints,
+  getSprintBurndown,
+  getVelocity,
 } from '../api/sprints'
 
 export function useSprints(params = {}) {
@@ -72,6 +75,31 @@ export function useCompleteSprint() {
       queryClient.invalidateQueries({ queryKey: ['sprints'] })
       queryClient.invalidateQueries({ queryKey: ['sprints', id] })
       queryClient.invalidateQueries({ queryKey: ['tickets'] })
+    },
+  })
+}
+
+export function useSprintBurndown(id) {
+  return useQuery({
+    queryKey: ['sprints', id, 'burndown'],
+    queryFn: () => getSprintBurndown(id),
+    enabled: !!id,
+  })
+}
+
+export function useVelocity(params = {}) {
+  return useQuery({
+    queryKey: ['velocity', params],
+    queryFn: () => getVelocity(params),
+  })
+}
+
+export function useBulkDeleteSprints() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: bulkDeleteSprints,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['sprints'] })
     },
   })
 }

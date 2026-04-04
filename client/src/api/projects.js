@@ -25,6 +25,11 @@ export async function deleteProject(id) {
   return data
 }
 
+export async function bulkDeleteProjects(ids) {
+  const { data } = await axiosInstance.post('/projects/bulk/delete', { ids })
+  return data
+}
+
 export async function getProjectStats(id) {
   const { data } = await axiosInstance.get(`/projects/${id}/stats`)
   return data

@@ -94,6 +94,7 @@ class TicketCreate(BaseModel):
 class TicketUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
+    status: Optional[str] = None
     priority: Optional[str] = None
     assignee_id: Optional[int] = None
     sprint_id: Optional[int] = None
@@ -350,6 +351,11 @@ async def update_ticket(
         updates["title"] = body.title
     if body.description is not None:
         updates["description"] = body.description
+    if body.status is not None:
+        valid_statuses = {"todo", "in_progress", "review", "done", "blocked", "cancelled"}
+        if body.status not in valid_statuses:
+            raise HTTPException(status_code=422, detail=f"status must be one of {valid_statuses}")
+        updates["status"] = body.status
     if body.priority is not None:
         valid = {"p0", "p1", "p2", "p3"}
         if body.priority not in valid:
@@ -408,6 +414,13 @@ async def delete_ticket(
     if await cursor.fetchone() is None:
         raise HTTPException(status_code=404, detail="Ticket not found")
 
+    # Cascade delete children
+    await db.execute("DELETE FROM comments WHERE ticket_id = ?", (ticket_id,))
+    await db.execute("DELETE FROM blockers WHERE ticket_id = ?", (ticket_id,))
+    await db.execute("DELETE FROM ticket_metrics WHERE ticket_id = ?", (ticket_id,))
+    await db.execute("DELETE FROM tool_usage_log WHERE ticket_id = ?", (ticket_id,))
+    await db.execute("DELETE FROM agent_sessions WHERE ticket_id = ?", (ticket_id,))
+    await db.execute("DELETE FROM activity_log WHERE entity_type = 'ticket' AND entity_id = ?", (ticket_id,))
     await db.execute("DELETE FROM tickets WHERE id = ?", (ticket_id,))
     await db.commit()
 
@@ -769,3 +782,37 @@ async def bulk_status(
     await db.commit()
 
     return {"updated": len(body.ticket_ids), "status": body.status}
+
+
+class BulkDelete(BaseModel):
+    ticket_ids: list[int]
+
+
+@router.post("/bulk/delete")
+async def bulk_delete(
+    body: BulkDelete,
+    db: aiosqlite.Connection = Depends(get_db),
+    _current=Depends(require_auth),
+):
+    if not body.ticket_ids:
+        raise HTTPException(status_code=422, detail="ticket_ids cannot be empty")
+
+    placeholders = ",".join("?" * len(body.ticket_ids))
+
+    # Cascade: delete children first
+    await db.execute(f"DELETE FROM comments WHERE ticket_id IN ({placeholders})", body.ticket_ids)
+    await db.execute(f"DELETE FROM blockers WHERE ticket_id IN ({placeholders})", body.ticket_ids)
+    await db.execute(f"DELETE FROM ticket_metrics WHERE ticket_id IN ({placeholders})", body.ticket_ids)
+    await db.execute(f"DELETE FROM tool_usage_log WHERE ticket_id IN ({placeholders})", body.ticket_ids)
+    await db.execute(f"DELETE FROM agent_sessions WHERE ticket_id IN ({placeholders})", body.ticket_ids)
+    await db.execute(
+        f"DELETE FROM activity_log WHERE entity_type = 'ticket' AND entity_id IN ({placeholders})",
+        body.ticket_ids,
+    )
+    await db.execute(
+        f"DELETE FROM tickets WHERE id IN ({placeholders})",
+        body.ticket_ids,
+    )
+    await db.commit()
+
+    return {"deleted": len(body.ticket_ids)}

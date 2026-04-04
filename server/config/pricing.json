@@ -1,0 +1,23 @@
+{
+  "models": {
+    "claude-opus-4-6": {
+      "input_per_1m": 15.00,
+      "output_per_1m": 75.00,
+      "cache_read_per_1m": 1.50,
+      "cache_write_per_1m": 18.75
+    },
+    "claude-sonnet-4-6": {
+      "input_per_1m": 3.00,
+      "output_per_1m": 15.00,
+      "cache_read_per_1m": 0.30,
+      "cache_write_per_1m": 3.75
+    },
+    "claude-haiku-4-5": {
+      "input_per_1m": 0.80,
+      "output_per_1m": 4.00,
+      "cache_read_per_1m": 0.08,
+      "cache_write_per_1m": 1.00
+    }
+  },
+  "default_model": "claude-sonnet-4-6"
+}

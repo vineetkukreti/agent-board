@@ -29,3 +29,18 @@ export async function rotateKey(id) {
   const { data } = await axiosInstance.post(`/agents/${id}/rotate-key`)
   return data
 }
+
+export async function bulkDeleteAgents(deleteData) {
+  const { data } = await axiosInstance.post('/agents/bulk/delete', deleteData)
+  return data
+}
+
+export async function getAgentPerformance(id) {
+  const { data } = await axiosInstance.get(`/agents/${id}/performance`)
+  return data
+}
+
+export async function getAgentLeaderboard() {
+  const { data } = await axiosInstance.get('/agents/leaderboard')
+  return data
+}

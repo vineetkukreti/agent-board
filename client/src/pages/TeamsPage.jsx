@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { ChevronDown, ChevronUp, Users, Plus, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, Users, Plus, X, Pencil, Trash2, Check, Save } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { useTeams, useTeamMembers, useCreateTeam } from '../hooks/useTeams'
+import { useTeams, useTeamMembers, useCreateTeam, useUpdateTeam, useDeleteTeam, useBulkDeleteTeams } from '../hooks/useTeams'
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -12,7 +12,11 @@ const STATUS_CONFIG = {
   offline: { color: 'var(--danger)',         label: 'Offline' },
 }
 
-// ─── Team Card ────────────────────────────────────────────────────────────────
+function slugify(str) {
+  return str.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
+}
+
+// ─── Team Member List ────────────────────────────────────────────────────────
 
 function TeamMemberList({ teamId }) {
   const { data, isLoading } = useTeamMembers(teamId)
@@ -66,55 +70,198 @@ function TeamMemberList({ teamId }) {
   )
 }
 
-function TeamCard({ team }) {
+// ─── Team Card ──────────────────────────────────────────────────────────────
+
+function TeamCard({ team, isSelected, onToggleSelect, onDelete }) {
   const [expanded, setExpanded] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [editForm, setEditForm] = useState({ name: '', description: '', color: '' })
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const updateTeam = useUpdateTeam()
+
+  function startEdit() {
+    setEditForm({
+      name: team.name,
+      description: team.description ?? '',
+      color: team.color ?? '#3b82f6',
+    })
+    setEditing(true)
+  }
+
+  async function handleSave() {
+    if (!editForm.name.trim()) return
+    try {
+      await updateTeam.mutateAsync({
+        id: team.id,
+        name: editForm.name.trim(),
+        description: editForm.description.trim() || null,
+        color: editForm.color || null,
+      })
+      toast.success('Team updated')
+      setEditing(false)
+    } catch (err) {
+      toast.error(err.response?.data?.detail ?? 'Failed to update team')
+    }
+  }
+
+  function handleDelete() {
+    if (!confirmDelete) {
+      setConfirmDelete(true)
+      return
+    }
+    onDelete(team.id)
+    setConfirmDelete(false)
+  }
+
+  const inputStyle = {
+    backgroundColor: 'var(--bg-primary)',
+    border: '1px solid var(--border)',
+    color: 'var(--text-primary)',
+  }
+  const inputClass = "w-full px-2 py-1 rounded-md text-sm outline-none"
 
   return (
     <div className="rounded-xl border overflow-hidden"
       style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}>
       {/* Header */}
       <div className="p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-3 h-3 rounded-full shrink-0"
-              style={{ backgroundColor: team.color ?? 'var(--text-secondary)' }} />
-            <div className="min-w-0">
-              <h3 className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
-                {team.name}
-              </h3>
-              <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
-                @{team.slug}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3 shrink-0">
-            <div className="text-right">
-              <p className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
-                {team.member_count}
-              </p>
-              <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>members</p>
-            </div>
+        <div className="flex items-start gap-2">
+          {/* Checkbox */}
+          <div className="pt-0.5 shrink-0">
             <button
-              onClick={() => setExpanded((v) => !v)}
-              className="p-1.5 rounded-md transition-colors"
+              onClick={() => onToggleSelect(team.id)}
+              className="w-5 h-5 rounded border flex items-center justify-center transition-colors"
               style={{
-                backgroundColor: 'var(--bg-hover)',
-                color: 'var(--text-secondary)',
+                borderColor: isSelected ? 'var(--accent)' : 'var(--border)',
+                backgroundColor: isSelected ? 'var(--accent)' : 'transparent',
               }}
             >
-              {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              {isSelected && <Check size={11} className="text-white" />}
             </button>
           </div>
+
+          {/* Main content */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                {editing ? (
+                  <input
+                    type="color"
+                    value={editForm.color}
+                    onChange={(e) => setEditForm((f) => ({ ...f, color: e.target.value }))}
+                    className="w-5 h-5 rounded-full shrink-0 cursor-pointer border-0 p-0"
+                    style={{ backgroundColor: 'transparent' }}
+                  />
+                ) : (
+                  <div className="w-3 h-3 rounded-full shrink-0"
+                    style={{ backgroundColor: team.color ?? 'var(--text-secondary)' }} />
+                )}
+                <div className="min-w-0">
+                  {editing ? (
+                    <input
+                      type="text"
+                      value={editForm.name}
+                      onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))}
+                      className={inputClass}
+                      style={inputStyle}
+                    />
+                  ) : (
+                    <>
+                      <h3 className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
+                        {team.name}
+                      </h3>
+                      <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+                        @{team.slug}
+                      </p>
+                    </>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <div className="text-right">
+                  <p className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
+                    {team.member_count}
+                  </p>
+                  <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>members</p>
+                </div>
+                {editing ? (
+                  <>
+                    <button
+                      onClick={handleSave}
+                      disabled={updateTeam.isPending}
+                      className="p-1.5 rounded-md transition-colors"
+                      style={{ backgroundColor: 'var(--success)', color: 'white' }}
+                      title="Save"
+                    >
+                      <Save size={14} />
+                    </button>
+                    <button
+                      onClick={() => setEditing(false)}
+                      className="p-1.5 rounded-md transition-colors"
+                      style={{ backgroundColor: 'var(--bg-hover)', color: 'var(--text-secondary)' }}
+                      title="Cancel"
+                    >
+                      <X size={14} />
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={startEdit}
+                      className="p-1.5 rounded-md transition-colors"
+                      style={{ backgroundColor: 'var(--bg-hover)', color: 'var(--text-secondary)' }}
+                      title="Edit team"
+                    >
+                      <Pencil size={14} />
+                    </button>
+                    <button
+                      onClick={handleDelete}
+                      className="p-1.5 rounded-md transition-colors"
+                      style={{
+                        backgroundColor: confirmDelete ? 'var(--danger)' : 'var(--bg-hover)',
+                        color: confirmDelete ? 'white' : 'var(--text-secondary)',
+                      }}
+                      title={confirmDelete ? 'Click again to confirm' : 'Delete team'}
+                      onBlur={() => setConfirmDelete(false)}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                    <button
+                      onClick={() => setExpanded((v) => !v)}
+                      className="p-1.5 rounded-md transition-colors"
+                      style={{
+                        backgroundColor: 'var(--bg-hover)',
+                        color: 'var(--text-secondary)',
+                      }}
+                    >
+                      {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+            {editing ? (
+              <textarea
+                value={editForm.description}
+                onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))}
+                className={`${inputClass} mt-2 resize-none`}
+                style={inputStyle}
+                rows={2}
+                placeholder="Description"
+              />
+            ) : (
+              team.description && (
+                <p className="text-sm mt-2" style={{ color: 'var(--text-secondary)' }}>
+                  {team.description}
+                </p>
+              )
+            )}
+          </div>
         </div>
-        {team.description && (
-          <p className="text-sm mt-2" style={{ color: 'var(--text-secondary)' }}>
-            {team.description}
-          </p>
-        )}
       </div>
 
       {/* Expandable member list */}
-      {expanded && (
+      {expanded && !editing && (
         <div className="border-t" style={{ borderColor: 'var(--border)' }}>
           <TeamMemberList teamId={team.id} />
         </div>
@@ -128,6 +275,7 @@ function TeamCard({ team }) {
 function CreateTeamModal({ onClose }) {
   const create = useCreateTeam()
   const [form, setForm] = useState({ name: '', slug: '', description: '', color: '#3b82f6' })
+  const [slugTouched, setSlugTouched] = useState(false)
 
   function set(k, v) { setForm((f) => ({ ...f, [k]: v })) }
 
@@ -182,7 +330,7 @@ function CreateTeamModal({ onClose }) {
                   value={form.name}
                   onChange={(e) => {
                     set('name', e.target.value)
-                    if (!form.slug) set('slug', e.target.value.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, ''))
+                    if (!slugTouched) set('slug', slugify(e.target.value))
                   }}
                   className={inputClass}
                   style={inputStyle}
@@ -198,7 +346,10 @@ function CreateTeamModal({ onClose }) {
                 <input
                   type="text"
                   value={form.slug}
-                  onChange={(e) => set('slug', e.target.value.toLowerCase().replace(/[^a-z0-9-_]/g, ''))}
+                  onChange={(e) => {
+                    set('slug', e.target.value.toLowerCase().replace(/[^a-z0-9-_]/g, ''))
+                    setSlugTouched(true)
+                  }}
                   className={inputClass}
                   style={inputStyle}
                   placeholder="frontend"
@@ -263,12 +414,106 @@ function CreateTeamModal({ onClose }) {
   )
 }
 
+// ─── Bulk Action Bar ──────────────────────────────────────────────────────────
+
+function BulkActionBar({ count, onDelete, onClear, isDeleting }) {
+  const [confirmDelete, setConfirmDelete] = useState(false)
+
+  return (
+    <div className="flex items-center gap-3 px-4 py-2.5 rounded-lg border"
+      style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}>
+      <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+        {count} selected
+      </span>
+      <div className="w-px h-5" style={{ backgroundColor: 'var(--border)' }} />
+      {confirmDelete ? (
+        <>
+          <span className="text-sm" style={{ color: 'var(--danger)' }}>Delete {count} teams?</span>
+          <button
+            onClick={() => { onDelete(); setConfirmDelete(false) }}
+            disabled={isDeleting}
+            className="px-3 py-1 rounded-md text-sm font-medium text-white disabled:opacity-50"
+            style={{ backgroundColor: 'var(--danger)' }}
+          >
+            {isDeleting ? 'Deleting...' : 'Confirm'}
+          </button>
+          <button
+            onClick={() => setConfirmDelete(false)}
+            className="px-3 py-1 rounded-md text-sm font-medium"
+            style={{ color: 'var(--text-secondary)' }}
+          >
+            Cancel
+          </button>
+        </>
+      ) : (
+        <button
+          onClick={() => setConfirmDelete(true)}
+          className="flex items-center gap-1.5 px-3 py-1 rounded-md text-sm font-medium transition-colors"
+          style={{ color: 'var(--danger)' }}
+        >
+          <Trash2 size={14} />
+          Delete
+        </button>
+      )}
+      <div className="flex-1" />
+      <button
+        onClick={onClear}
+        className="p-1 rounded-md transition-colors"
+        style={{ color: 'var(--text-secondary)' }}
+        title="Clear selection"
+      >
+        <X size={16} />
+      </button>
+    </div>
+  )
+}
+
 // ─── main page ────────────────────────────────────────────────────────────────
 
 export default function TeamsPage() {
   const [showCreate, setShowCreate] = useState(false)
+  const [selected, setSelected] = useState(new Set())
   const { data, isLoading, isError } = useTeams()
+  const deleteTeam = useDeleteTeam()
+  const bulkDelete = useBulkDeleteTeams()
   const teams = data?.data ?? []
+
+  function toggleSelect(teamId) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(teamId)) next.delete(teamId)
+      else next.add(teamId)
+      return next
+    })
+  }
+
+  function clearSelection() {
+    setSelected(new Set())
+  }
+
+  async function handleSingleDelete(teamId) {
+    try {
+      await deleteTeam.mutateAsync(teamId)
+      toast.success('Team deleted')
+      setSelected((prev) => {
+        const next = new Set(prev)
+        next.delete(teamId)
+        return next
+      })
+    } catch (err) {
+      toast.error(err.response?.data?.detail ?? 'Failed to delete team')
+    }
+  }
+
+  async function handleBulkDelete() {
+    try {
+      await bulkDelete.mutateAsync({ team_ids: [...selected] })
+      toast.success(`Deleted ${selected.size} team${selected.size !== 1 ? 's' : ''}`)
+      clearSelection()
+    } catch (err) {
+      toast.error(err.response?.data?.detail ?? 'Failed to delete teams')
+    }
+  }
 
   return (
     <div className="space-y-5 pb-8">
@@ -288,6 +533,16 @@ export default function TeamsPage() {
           New Team
         </button>
       </div>
+
+      {/* Bulk action bar */}
+      {selected.size > 0 && (
+        <BulkActionBar
+          count={selected.size}
+          onDelete={handleBulkDelete}
+          onClear={clearSelection}
+          isDeleting={bulkDelete.isPending}
+        />
+      )}
 
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -313,7 +568,13 @@ export default function TeamsPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {teams.map((team) => (
-            <TeamCard key={team.id} team={team} />
+            <TeamCard
+              key={team.id}
+              team={team}
+              isSelected={selected.has(team.id)}
+              onToggleSelect={toggleSelect}
+              onDelete={handleSingleDelete}
+            />
           ))}
         </div>
       )}

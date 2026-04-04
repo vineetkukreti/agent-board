@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { formatDistanceToNow } from 'date-fns'
 import {
   Activity, Ticket, Bot, CheckCircle2, AlertTriangle,
@@ -119,12 +119,13 @@ function EventRow({ event, isLast }) {
 // ─── main page ────────────────────────────────────────────────────────────────
 
 export default function ActivityPage() {
-  const [page, setPage] = useState(1)
-  const [filters, setFilters] = useState({
-    project_id: '',
-    agent_id: '',
-    event_type: '',
-  })
+  const [searchParams, setSearchParams] = useSearchParams()
+  const page = Number(searchParams.get('page') ?? 1)
+  const filters = {
+    project_id: searchParams.get('project_id') ?? '',
+    agent_id: searchParams.get('agent_id') ?? '',
+    event_type: searchParams.get('event_type') ?? '',
+  }
 
   const { data: agentData } = useAgents({ per_page: 200 })
   const { data: projectData } = useProjects()
@@ -143,8 +144,21 @@ export default function ActivityPage() {
   const pagination = data?.pagination ?? {}
 
   function setFilter(k, v) {
-    setFilters((f) => ({ ...f, [k]: v }))
-    setPage(1)
+    setSearchParams(prev => {
+      const p = new URLSearchParams(prev)
+      if (v) p.set(k, v); else p.delete(k)
+      p.delete('page')
+      return p
+    })
+  }
+
+  function setPage(pageOrFn) {
+    const next = typeof pageOrFn === 'function' ? pageOrFn(page) : pageOrFn
+    setSearchParams(prev => {
+      const p = new URLSearchParams(prev)
+      if (next > 1) p.set('page', String(next)); else p.delete('page')
+      return p
+    })
   }
 
   const agents = agentData?.data ?? []
@@ -207,7 +221,7 @@ export default function ActivityPage() {
 
         {Object.values(filters).some(Boolean) && (
           <button
-            onClick={() => { setFilters({ project_id: '', agent_id: '', event_type: '' }); setPage(1) }}
+            onClick={() => setSearchParams({})}
             className="text-xs px-2.5 py-1.5 rounded-md"
             style={{ backgroundColor: 'rgba(239,68,68,0.15)', color: 'var(--danger)' }}
           >

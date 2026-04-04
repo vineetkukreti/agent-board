@@ -34,3 +34,18 @@ export async function getSprintBoard(id) {
   const { data } = await axiosInstance.get(`/sprints/${id}/board`)
   return data
 }
+
+export async function bulkDeleteSprints(deleteData) {
+  const { data } = await axiosInstance.post('/sprints/bulk/delete', deleteData)
+  return data
+}
+
+export async function getSprintBurndown(id) {
+  const { data } = await axiosInstance.get(`/sprints/${id}/burndown`)
+  return data
+}
+
+export async function getVelocity(params = {}) {
+  const { data } = await axiosInstance.get('/sprints/velocity/summary', { params })
+  return data
+}

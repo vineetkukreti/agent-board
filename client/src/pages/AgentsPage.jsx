@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Search, Plus, X, Bot, User } from 'lucide-react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Search, Plus, X, Bot, User, Check, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { useAgents, useRegisterAgent } from '../hooks/useAgents'
+import { useAgents, useRegisterAgent, useBulkDeleteAgents } from '../hooks/useAgents'
 import { useTeams } from '../hooks/useTeams'
 import { useAgentTypes } from '../hooks/useAgentTypes'
 
@@ -239,65 +239,86 @@ function RegisterModal({ onClose, teams, agentTypes }) {
 
 // ─── Agent Card ───────────────────────────────────────────────────────────────
 
-function AgentCard({ agent, onClick }) {
+function AgentCard({ agent, onClick, selected, onToggle }) {
   const status = STATUS_CONFIG[agent.status] ?? STATUS_CONFIG.offline
   const avatarBg = hashColor(agent.name)
 
   return (
-    <div
-      onClick={() => onClick(agent)}
-      className="rounded-xl border p-4 cursor-pointer transition-all hover:border-[var(--accent)] hover:-translate-y-0.5"
-      style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}
-    >
-      <div className="flex items-start gap-3">
-        {/* Avatar */}
-        <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 text-white text-sm font-semibold"
-          style={{ backgroundColor: avatarBg }}>
-          {agent.is_human ? <User size={16} /> : initials(agent.display_name)}
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
-              {agent.display_name}
-            </p>
-            {/* Status dot */}
-            <span className="w-2 h-2 rounded-full shrink-0"
-              style={{ backgroundColor: status.color }} />
+    <div className="group flex gap-2 items-start">
+      {/* Checkbox */}
+      <button
+        onClick={(e) => { e.stopPropagation(); onToggle(agent.id) }}
+        className={`mt-4 shrink-0 w-5 h-5 rounded border flex items-center justify-center transition-all ${
+          selected
+            ? 'opacity-100'
+            : 'opacity-0 group-hover:opacity-100'
+        }`}
+        style={{
+          borderColor: selected ? 'var(--accent)' : 'var(--border)',
+          backgroundColor: selected ? 'var(--accent)' : 'transparent',
+        }}
+      >
+        {selected && <Check size={12} className="text-white" />}
+      </button>
+
+      {/* Card */}
+      <div
+        onClick={() => onClick(agent)}
+        className={`flex-1 rounded-xl border p-4 cursor-pointer transition-all hover:border-[var(--accent)] hover:-translate-y-0.5 ${
+          selected ? 'ring-2 ring-[var(--accent)]' : ''
+        }`}
+        style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}
+      >
+        <div className="flex items-start gap-3">
+          {/* Avatar */}
+          <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 text-white text-sm font-semibold"
+            style={{ backgroundColor: avatarBg }}>
+            {agent.is_human ? <User size={16} /> : initials(agent.display_name)}
           </div>
-          <p className="text-xs truncate mt-0.5" style={{ color: 'var(--text-secondary)' }}>
-            @{agent.name}
-          </p>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
+                {agent.display_name}
+              </p>
+              {/* Status dot */}
+              <span className="w-2 h-2 rounded-full shrink-0"
+                style={{ backgroundColor: status.color }} />
+            </div>
+            <p className="text-xs truncate mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+              @{agent.name}
+            </p>
+          </div>
         </div>
-      </div>
 
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        {agent.team_name && (
-          <span className="text-xs px-2 py-0.5 rounded-full"
-            style={{ backgroundColor: 'var(--bg-hover)', color: 'var(--text-secondary)' }}>
-            {agent.team_name}
-          </span>
-        )}
-        {agent.agent_type_name && (
-          <span className="text-xs px-2 py-0.5 rounded-full"
-            style={{ backgroundColor: 'rgba(59,130,246,0.15)', color: 'var(--accent)' }}>
-            {agent.agent_type_name}
-          </span>
-        )}
-        {agent.model && (
-          <span className="text-xs px-2 py-0.5 rounded-full"
-            style={{ backgroundColor: 'var(--bg-hover)', color: 'var(--text-secondary)' }}>
-            {agent.model}
-          </span>
-        )}
-      </div>
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {agent.team_name && (
+            <span className="text-xs px-2 py-0.5 rounded-full"
+              style={{ backgroundColor: 'var(--bg-hover)', color: 'var(--text-secondary)' }}>
+              {agent.team_name}
+            </span>
+          )}
+          {agent.agent_type_name && (
+            <span className="text-xs px-2 py-0.5 rounded-full"
+              style={{ backgroundColor: 'rgba(59,130,246,0.15)', color: 'var(--accent)' }}>
+              {agent.agent_type_name}
+            </span>
+          )}
+          {agent.model && (
+            <span className="text-xs px-2 py-0.5 rounded-full"
+              style={{ backgroundColor: 'var(--bg-hover)', color: 'var(--text-secondary)' }}>
+              {agent.model}
+            </span>
+          )}
+        </div>
 
-      <div className="mt-2 flex items-center justify-between">
-        <span className="text-xs" style={{ color: status.color }}>
-          {status.label}
-        </span>
-        {agent.is_human && (
-          <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>Human</span>
-        )}
+        <div className="mt-2 flex items-center justify-between">
+          <span className="text-xs" style={{ color: status.color }}>
+            {status.label}
+          </span>
+          {agent.is_human && (
+            <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>Human</span>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -306,10 +327,35 @@ function AgentCard({ agent, onClick }) {
 // ─── main page ────────────────────────────────────────────────────────────────
 
 export default function AgentsPage() {
-  const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState('')
-  const [teamFilter, setTeamFilter] = useState('')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const search = searchParams.get('search') ?? ''
+  const statusFilter = searchParams.get('status') ?? ''
+  const teamFilter = searchParams.get('team_id') ?? ''
   const [showRegister, setShowRegister] = useState(false)
+  const [selected, setSelected] = useState(new Set())
+  const bulkDelete = useBulkDeleteAgents()
+
+  const toggleSelect = (id) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+  const selectAll = (agents) => setSelected(new Set(agents.map((a) => a.id)))
+  const clearSelection = () => setSelected(new Set())
+
+  async function handleBulkDelete() {
+    if (!selected.size) return
+    try {
+      await bulkDelete.mutateAsync({ agent_ids: [...selected] })
+      toast.success(`Deleted ${selected.size} agent${selected.size !== 1 ? 's' : ''}`)
+      clearSelection()
+    } catch (err) {
+      toast.error(err.response?.data?.detail ?? 'Delete failed')
+    }
+  }
 
   const { data: agentData, isLoading } = useAgents(
     Object.fromEntries([
@@ -369,7 +415,7 @@ export default function AgentsPage() {
           <input
             type="text"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => setSearchParams(prev => { const p = new URLSearchParams(prev); if (e.target.value) p.set('search', e.target.value); else p.delete('search'); return p })}
             placeholder="Search agents..."
             className="w-full pl-8 pr-3 py-1.5 rounded-md text-sm outline-none"
             style={{
@@ -381,7 +427,7 @@ export default function AgentsPage() {
         </div>
         <select
           value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
+          onChange={(e) => setSearchParams(prev => { const p = new URLSearchParams(prev); if (e.target.value) p.set('status', e.target.value); else p.delete('status'); return p })}
           className="px-3 py-1.5 rounded-md text-sm outline-none"
           style={selectStyle}
         >
@@ -393,7 +439,7 @@ export default function AgentsPage() {
         </select>
         <select
           value={teamFilter}
-          onChange={(e) => setTeamFilter(e.target.value)}
+          onChange={(e) => setSearchParams(prev => { const p = new URLSearchParams(prev); if (e.target.value) p.set('team_id', e.target.value); else p.delete('team_id'); return p })}
           className="px-3 py-1.5 rounded-md text-sm outline-none"
           style={selectStyle}
         >
@@ -403,6 +449,42 @@ export default function AgentsPage() {
           ))}
         </select>
       </div>
+
+      {/* Bulk action bar */}
+      {selected.size > 0 && (
+        <div className="flex items-center gap-3 px-4 py-2 rounded-lg border text-sm"
+          style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--accent)' }}>
+          <span className="font-medium" style={{ color: 'var(--text-primary)' }}>
+            {selected.size} selected
+          </span>
+          <span style={{ color: 'var(--border)' }}>|</span>
+          <button
+            onClick={handleBulkDelete}
+            disabled={bulkDelete.isPending}
+            className="flex items-center gap-1 text-sm font-medium hover:opacity-80 disabled:opacity-50"
+            style={{ color: 'var(--danger)' }}
+          >
+            <Trash2 size={14} />
+            {bulkDelete.isPending ? 'Deleting...' : 'Delete'}
+          </button>
+          <span style={{ color: 'var(--border)' }}>|</span>
+          <button
+            onClick={() => selectAll(filtered)}
+            className="text-sm font-medium hover:opacity-80"
+            style={{ color: 'var(--accent)' }}
+          >
+            Select all
+          </button>
+          <span style={{ color: 'var(--border)' }}>|</span>
+          <button
+            onClick={clearSelection}
+            className="text-sm font-medium hover:opacity-80"
+            style={{ color: 'var(--text-secondary)' }}
+          >
+            Clear
+          </button>
+        </div>
+      )}
 
       {/* Grid */}
       {isLoading ? (
@@ -434,6 +516,8 @@ export default function AgentsPage() {
             <AgentCard
               key={agent.id}
               agent={agent}
+              selected={selected.has(agent.id)}
+              onToggle={toggleSelect}
               onClick={() => navigate(`/agents/${agent.id}`)}
             />
           ))}

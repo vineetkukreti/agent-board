@@ -82,7 +82,7 @@ async def list_projects(db: aiosqlite.Connection = Depends(get_db)):
 async def create_project(
     body: ProjectCreate,
     db: aiosqlite.Connection = Depends(get_db),
-    _current=Depends(get_current_admin),
+    _current=Depends(require_auth),
 ):
     valid_statuses = {"active", "archived", "paused"}
     if body.status and body.status not in valid_statuses:
@@ -211,8 +211,61 @@ async def delete_project(
     if await cursor.fetchone() is None:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    await db.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+    await _cascade_delete_project(db, project_id)
     await db.commit()
+
+
+class BulkDeleteRequest(BaseModel):
+    ids: list[int]
+
+
+@router.post("/bulk/delete", status_code=status.HTTP_204_NO_CONTENT)
+async def bulk_delete_projects(
+    body: BulkDeleteRequest,
+    db: aiosqlite.Connection = Depends(get_db),
+    _current: dict = Depends(get_current_admin),
+):
+    if not body.ids:
+        raise HTTPException(status_code=422, detail="ids list must not be empty")
+
+    for pid in body.ids:
+        await _cascade_delete_project(db, pid)
+    await db.commit()
+
+
+async def _cascade_delete_project(db: aiosqlite.Connection, project_id: int):
+    """Cascade-delete a project and all related data."""
+    # Collect ticket ids for this project
+    cursor = await db.execute(
+        "SELECT id FROM tickets WHERE project_id = ?", (project_id,)
+    )
+    ticket_ids = [r["id"] for r in await cursor.fetchall()]
+
+    if ticket_ids:
+        placeholders = ",".join("?" * len(ticket_ids))
+        # Delete from tables that reference tickets but use SET NULL
+        await db.execute(
+            f"DELETE FROM tool_usage_log WHERE ticket_id IN ({placeholders})",
+            ticket_ids,
+        )
+        await db.execute(
+            f"DELETE FROM agent_sessions WHERE ticket_id IN ({placeholders})",
+            ticket_ids,
+        )
+
+    # Delete from tables that reference project_id with SET NULL
+    await db.execute(
+        "DELETE FROM activity_log WHERE project_id = ?", (project_id,)
+    )
+    await db.execute(
+        "DELETE FROM agent_sessions WHERE project_id = ?", (project_id,)
+    )
+    await db.execute(
+        "DELETE FROM standup_entries WHERE project_id = ?", (project_id,)
+    )
+
+    # FK cascades handle: sprints, tickets, comments, blockers, ticket_metrics
+    await db.execute("DELETE FROM projects WHERE id = ?", (project_id,))
 
 
 @router.get("/{project_id}/stats")

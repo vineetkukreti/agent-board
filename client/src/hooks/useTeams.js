@@ -5,6 +5,7 @@ import {
   createTeam,
   updateTeam,
   deleteTeam,
+  bulkDeleteTeams,
   getTeamMembers,
   getTeamWorkload,
 } from '../api/teams'
@@ -65,6 +66,16 @@ export function useDeleteTeam() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: deleteTeam,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['teams'] })
+    },
+  })
+}
+
+export function useBulkDeleteTeams() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: bulkDeleteTeams,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['teams'] })
     },

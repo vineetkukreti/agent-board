@@ -74,7 +74,7 @@ class AgentUpdate(BaseModel):
 async def register_agent(
     body: AgentCreate,
     db: aiosqlite.Connection = Depends(get_db),
-    _current: dict = Depends(get_current_admin),
+    _current=Depends(require_auth),
 ):
     raw_key = generate_api_key()
     key_hash = hash_api_key(raw_key)
@@ -182,6 +182,162 @@ async def list_agents(
     }
 
 
+@router.get("/leaderboard")
+async def agent_leaderboard(
+    db: aiosqlite.Connection = Depends(get_db),
+    _current: dict = Depends(require_auth),
+):
+    # Top 10 by tickets completed
+    cursor = await db.execute(
+        """
+        SELECT a.id, a.name, a.display_name, a.avatar_url,
+               COUNT(t.id) as tickets_completed
+        FROM agents a
+        LEFT JOIN tickets t ON t.assignee_id = a.id AND t.status = 'done'
+        GROUP BY a.id
+        ORDER BY tickets_completed DESC
+        LIMIT 10
+        """
+    )
+    top_by_tickets = [row_to_dict(r) for r in await cursor.fetchall()]
+
+    # Top 10 by lowest avg cost
+    cursor = await db.execute(
+        """
+        SELECT a.id, a.name, a.display_name, a.avatar_url,
+               ROUND(AVG(s.total_cost_usd), 4) as avg_cost,
+               COUNT(DISTINCT s.ticket_id) as tickets_worked
+        FROM agents a
+        JOIN agent_sessions s ON s.agent_id = a.id AND s.total_cost_usd > 0
+        GROUP BY a.id
+        HAVING tickets_worked > 0
+        ORDER BY avg_cost ASC
+        LIMIT 10
+        """
+    )
+    top_by_cost = [row_to_dict(r) for r in await cursor.fetchall()]
+
+    # Top 10 by fastest avg duration (seconds between started_at and ended_at)
+    cursor = await db.execute(
+        """
+        SELECT a.id, a.name, a.display_name, a.avatar_url,
+               ROUND(AVG(
+                   CAST((julianday(s.ended_at) - julianday(s.started_at)) * 86400 AS REAL)
+               ), 1) as avg_duration_seconds,
+               COUNT(s.id) as sessions_count
+        FROM agents a
+        JOIN agent_sessions s ON s.agent_id = a.id
+             AND s.ended_at IS NOT NULL AND s.status = 'completed'
+        GROUP BY a.id
+        HAVING sessions_count > 0
+        ORDER BY avg_duration_seconds ASC
+        LIMIT 10
+        """
+    )
+    top_by_speed = [row_to_dict(r) for r in await cursor.fetchall()]
+
+    return {
+        "top_by_tickets": top_by_tickets,
+        "top_by_cost": top_by_cost,
+        "top_by_speed": top_by_speed,
+    }
+
+
+@router.get("/{agent_id}/performance")
+async def agent_performance(
+    agent_id: int,
+    db: aiosqlite.Connection = Depends(get_db),
+    _current: dict = Depends(require_auth),
+):
+    # Verify agent exists
+    cursor = await db.execute("SELECT id, name, display_name FROM agents WHERE id = ?", (agent_id,))
+    agent = await cursor.fetchone()
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    # Total and done tickets
+    cursor = await db.execute(
+        "SELECT COUNT(*) as total FROM tickets WHERE assignee_id = ?", (agent_id,)
+    )
+    total_tickets = (await cursor.fetchone())["total"]
+
+    cursor = await db.execute(
+        "SELECT COUNT(*) as done FROM tickets WHERE assignee_id = ? AND status = 'done'",
+        (agent_id,),
+    )
+    done_tickets = (await cursor.fetchone())["done"]
+
+    completion_rate = round(done_tickets / total_tickets, 4) if total_tickets > 0 else 0.0
+
+    # Avg cost from agent_sessions
+    cursor = await db.execute(
+        """
+        SELECT COALESCE(ROUND(AVG(total_cost_usd), 4), 0) as avg_cost,
+               COALESCE(ROUND(SUM(total_cost_usd), 4), 0) as total_cost
+        FROM agent_sessions
+        WHERE agent_id = ? AND total_cost_usd > 0
+        """,
+        (agent_id,),
+    )
+    cost_row = await cursor.fetchone()
+    avg_cost = cost_row["avg_cost"]
+    total_cost = cost_row["total_cost"]
+
+    # Avg session duration
+    cursor = await db.execute(
+        """
+        SELECT COALESCE(ROUND(AVG(
+            CAST((julianday(ended_at) - julianday(started_at)) * 86400 AS REAL)
+        ), 1), 0) as avg_duration_seconds
+        FROM agent_sessions
+        WHERE agent_id = ? AND ended_at IS NOT NULL AND status = 'completed'
+        """,
+        (agent_id,),
+    )
+    avg_duration = (await cursor.fetchone())["avg_duration_seconds"]
+
+    # Tool breakdown from tool_usage_log
+    cursor = await db.execute(
+        """
+        SELECT tool_name, COUNT(*) as usage_count,
+               SUM(is_error) as error_count
+        FROM tool_usage_log
+        WHERE agent_id = ?
+        GROUP BY tool_name
+        ORDER BY usage_count DESC
+        """,
+        (agent_id,),
+    )
+    tool_rows = await cursor.fetchall()
+    tool_breakdown = [row_to_dict(r) for r in tool_rows]
+
+    # Error rate: tickets that had at least one error tool call / total tickets worked
+    cursor = await db.execute(
+        """
+        SELECT COUNT(DISTINCT ticket_id) as error_tickets
+        FROM tool_usage_log
+        WHERE agent_id = ? AND is_error = 1 AND ticket_id IS NOT NULL
+        """,
+        (agent_id,),
+    )
+    error_tickets = (await cursor.fetchone())["error_tickets"]
+    error_rate = round(error_tickets / total_tickets, 4) if total_tickets > 0 else 0.0
+
+    return {
+        "agent_id": agent_id,
+        "agent_name": agent["name"],
+        "display_name": agent["display_name"],
+        "total_tickets": total_tickets,
+        "done_tickets": done_tickets,
+        "completion_rate": completion_rate,
+        "avg_cost": avg_cost,
+        "total_cost": total_cost,
+        "avg_duration_seconds": avg_duration,
+        "error_rate": error_rate,
+        "tool_breakdown": tool_breakdown,
+    }
+
+
 @router.get("/{agent_id}")
 async def get_agent(agent_id: int, db: aiosqlite.Connection = Depends(get_db)):
     cursor = await db.execute(
@@ -286,6 +442,42 @@ async def update_agent(
     return row_to_dict(await cursor.fetchone())
 
 
+class BulkDeleteAgents(BaseModel):
+    agent_ids: list[int]
+
+
+@router.post("/bulk/delete")
+async def bulk_delete_agents(
+    body: BulkDeleteAgents,
+    db: aiosqlite.Connection = Depends(get_db),
+    _current=Depends(require_auth),
+):
+    if not body.agent_ids:
+        raise HTTPException(status_code=422, detail="agent_ids cannot be empty")
+
+    placeholders = ",".join("?" * len(body.agent_ids))
+
+    # Cascade: delete agent's children
+    await db.execute(f"DELETE FROM comments WHERE author_id IN ({placeholders})", body.agent_ids)
+    await db.execute(f"DELETE FROM standup_entries WHERE agent_id IN ({placeholders})", body.agent_ids)
+    await db.execute(f"DELETE FROM tool_usage_log WHERE agent_id IN ({placeholders})", body.agent_ids)
+    await db.execute(f"DELETE FROM agent_sessions WHERE agent_id IN ({placeholders})", body.agent_ids)
+    # Unassign tickets (don't delete them — they belong to the project)
+    await db.execute(f"UPDATE tickets SET assignee_id = NULL WHERE assignee_id IN ({placeholders})", body.agent_ids)
+    await db.execute(f"UPDATE tickets SET reporter_id = NULL WHERE reporter_id IN ({placeholders})", body.agent_ids)
+    await db.execute(
+        f"DELETE FROM activity_log WHERE entity_type = 'agent' AND entity_id IN ({placeholders})",
+        body.agent_ids,
+    )
+    await db.execute(
+        f"DELETE FROM agents WHERE id IN ({placeholders})",
+        body.agent_ids,
+    )
+    await db.commit()
+
+    return {"deleted": len(body.agent_ids)}
+
+
 @router.post("/{agent_id}/heartbeat")
 async def heartbeat(
     agent_id: int,
@@ -309,7 +501,7 @@ async def heartbeat(
 async def rotate_key(
     agent_id: int,
     db: aiosqlite.Connection = Depends(get_db),
-    _current: dict = Depends(get_current_admin),
+    _current=Depends(require_auth),
 ):
     cursor = await db.execute("SELECT id FROM agents WHERE id = ?", (agent_id,))
     if await cursor.fetchone() is None:

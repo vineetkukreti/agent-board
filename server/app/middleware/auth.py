@@ -202,3 +202,49 @@ async def require_auth(
         detail="Invalid credentials — API key or session token not recognised.",
         headers={"WWW-Authenticate": "Bearer"},
     )
+
+
+# ---------------------------------------------------------------------------
+# Role-based access helpers
+# ---------------------------------------------------------------------------
+
+
+def require_role(*allowed_roles: str):
+    """Return a dependency that enforces the admin session has one of the
+    allowed roles.  Must be used after ``get_current_admin``.
+
+    Usage::
+
+        @router.get("/admin-only", dependencies=[Depends(require_role("admin"))])
+        async def admin_only(...): ...
+    """
+
+    async def _check(current: dict = Depends(get_current_admin)):
+        if current.get("role") not in allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Requires role: {', '.join(allowed_roles)}. You have: {current.get('role')}",
+            )
+        return current
+
+    return _check
+
+
+async def require_admin(current: dict = Depends(get_current_admin)) -> dict:
+    """Convenience dependency: admin-only access."""
+    if current.get("role") != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required.",
+        )
+    return current
+
+
+async def require_write(current: dict = Depends(get_current_admin)) -> dict:
+    """Convenience dependency: admin or lead (non-viewer) access."""
+    if current.get("role") not in ("admin", "lead"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Write access required. Viewers have read-only access.",
+        )
+    return current

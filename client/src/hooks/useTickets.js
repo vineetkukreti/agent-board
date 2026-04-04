@@ -17,6 +17,7 @@ import {
   resolveBlocker,
   bulkAssign,
   bulkStatus,
+  bulkDelete,
 } from '../api/tickets'
 
 export function useTickets(params = {}) {
@@ -184,6 +185,17 @@ export function useBulkStatus() {
     mutationFn: bulkStatus,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tickets'] })
+    },
+  })
+}
+
+export function useBulkDelete() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: bulkDelete,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tickets'] })
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] })
     },
   })
 }

@@ -1,8 +1,15 @@
 import { useState } from 'react'
 import { format } from 'date-fns'
-import { Folder, Plus, X, ChevronDown, ChevronUp } from 'lucide-react'
+import { Folder, Plus, X, ChevronDown, ChevronUp, Pencil, Trash2, CheckSquare, Square } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { useProjects, useCreateProject, useProjectStats } from '../hooks/useProjects'
+import {
+  useProjects,
+  useCreateProject,
+  useUpdateProject,
+  useDeleteProject,
+  useBulkDeleteProjects,
+  useProjectStats,
+} from '../hooks/useProjects'
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -16,6 +23,13 @@ function safeFormat(dateStr) {
   if (!dateStr) return '—'
   try { return format(new Date(dateStr), 'MMM d, yyyy') } catch { return '—' }
 }
+
+const inputStyle = {
+  backgroundColor: 'var(--bg-primary)',
+  border: '1px solid var(--border)',
+  color: 'var(--text-primary)',
+}
+const inputClass = "w-full px-3 py-2 rounded-md text-sm outline-none"
 
 // ─── Stats Expansion ──────────────────────────────────────────────────────────
 
@@ -117,54 +131,283 @@ function ProjectStatsPanel({ projectId }) {
   )
 }
 
-// ─── Project Card ─────────────────────────────────────────────────────────────
+// ─── Confirm Delete Modal ────────────────────────────────────────────────────
 
-function ProjectCard({ project }) {
-  const [expanded, setExpanded] = useState(false)
-  const ps = PROJECT_STATUS[project.status] ?? PROJECT_STATUS.active
-
+function ConfirmDeleteModal({ title, message, onConfirm, onClose, isPending }) {
   return (
-    <div className="rounded-xl border overflow-hidden"
-      style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}>
-      <div className="p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 mb-1 flex-wrap">
-              <h3 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                {project.name}
-              </h3>
-              <span className="text-xs px-1.5 py-0.5 rounded-full font-medium"
-                style={{ backgroundColor: ps.bg, color: ps.color }}>
-                {ps.label}
-              </span>
-            </div>
-            <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>@{project.slug}</p>
-            {project.description && (
-              <p className="text-sm mt-1.5 line-clamp-2" style={{ color: 'var(--text-secondary)' }}>
-                {project.description}
-              </p>
-            )}
+    <>
+      <div className="fixed inset-0 z-30 bg-black/60" onClick={onClose} />
+      <div className="fixed inset-0 z-40 flex items-center justify-center p-4">
+        <div className="w-full max-w-sm rounded-xl border shadow-2xl"
+          style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}>
+          <div className="px-5 py-4 border-b" style={{ borderColor: 'var(--border)' }}>
+            <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+              {title}
+            </h2>
           </div>
-          <button
-            onClick={() => setExpanded((v) => !v)}
-            className="p-1.5 rounded-md transition-colors shrink-0"
-            style={{ backgroundColor: 'var(--bg-hover)', color: 'var(--text-secondary)' }}
-          >
-            {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-          </button>
-        </div>
-        <div className="flex items-center justify-between mt-3 text-xs"
-          style={{ color: 'var(--text-secondary)' }}>
-          <span>{project.ticket_count ?? 0} ticket{project.ticket_count !== 1 ? 's' : ''}</span>
-          <span>Created {safeFormat(project.created_at)}</span>
+          <div className="p-5">
+            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{message}</p>
+            <div className="flex gap-3 mt-5">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 py-2 rounded-md text-sm font-medium border"
+                style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)', backgroundColor: 'transparent' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={onConfirm}
+                disabled={isPending}
+                className="flex-1 py-2 rounded-md text-sm font-medium text-white disabled:opacity-50"
+                style={{ backgroundColor: 'var(--danger)' }}
+              >
+                {isPending ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
-      {expanded && (
-        <div className="border-t" style={{ borderColor: 'var(--border)' }}>
-          <ProjectStatsPanel projectId={project.id} />
+    </>
+  )
+}
+
+// ─── Edit Project Modal ──────────────────────────────────────────────────────
+
+function EditProjectModal({ project, onClose }) {
+  const update = useUpdateProject()
+  const [form, setForm] = useState({
+    name: project.name,
+    description: project.description ?? '',
+    status: project.status,
+  })
+
+  function set(k, v) { setForm((f) => ({ ...f, [k]: v })) }
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    if (!form.name.trim()) return
+    try {
+      await update.mutateAsync({
+        id: project.id,
+        name: form.name.trim(),
+        description: form.description.trim() || undefined,
+        status: form.status,
+      })
+      toast.success('Project updated')
+      onClose()
+    } catch (err) {
+      toast.error(err.response?.data?.detail ?? 'Failed to update project')
+    }
+  }
+
+  return (
+    <>
+      <div className="fixed inset-0 z-30 bg-black/60" onClick={onClose} />
+      <div className="fixed inset-0 z-40 flex items-center justify-center p-4">
+        <div className="w-full max-w-md rounded-xl border shadow-2xl"
+          style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}>
+          <div className="flex items-center justify-between px-5 py-4 border-b"
+            style={{ borderColor: 'var(--border)' }}>
+            <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+              Edit Project
+            </h2>
+            <button onClick={onClose} style={{ color: 'var(--text-secondary)' }}>
+              <X size={16} />
+            </button>
+          </div>
+          <form onSubmit={handleSubmit} className="p-5 space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-1.5"
+                style={{ color: 'var(--text-primary)' }}>
+                Name <span style={{ color: 'var(--danger)' }}>*</span>
+              </label>
+              <input
+                type="text"
+                value={form.name}
+                onChange={(e) => set('name', e.target.value)}
+                className={inputClass}
+                style={inputStyle}
+                placeholder="My Project"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1.5"
+                style={{ color: 'var(--text-primary)' }}>
+                Description
+              </label>
+              <textarea
+                value={form.description}
+                onChange={(e) => set('description', e.target.value)}
+                className={`${inputClass} resize-none`}
+                style={inputStyle}
+                rows={3}
+                placeholder="What is this project about?"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1.5"
+                style={{ color: 'var(--text-primary)' }}>
+                Status
+              </label>
+              <select
+                value={form.status}
+                onChange={(e) => set('status', e.target.value)}
+                className={inputClass}
+                style={inputStyle}
+              >
+                <option value="active">Active</option>
+                <option value="paused">Paused</option>
+                <option value="archived">Archived</option>
+              </select>
+            </div>
+            <div className="flex gap-3 pt-1">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 py-2 rounded-md text-sm font-medium border"
+                style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)', backgroundColor: 'transparent' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={update.isPending}
+                className="flex-1 py-2 rounded-md text-sm font-medium text-white disabled:opacity-50"
+                style={{ backgroundColor: 'var(--accent)' }}
+              >
+                {update.isPending ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </form>
         </div>
+      </div>
+    </>
+  )
+}
+
+// ─── Project Card ─────────────────────────────────────────────────────────────
+
+function ProjectCard({ project, isSelected, onToggleSelect, bulkMode }) {
+  const [expanded, setExpanded] = useState(false)
+  const [showEdit, setShowEdit] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const deleteProject = useDeleteProject()
+  const ps = PROJECT_STATUS[project.status] ?? PROJECT_STATUS.active
+
+  async function handleDelete() {
+    try {
+      await deleteProject.mutateAsync(project.id)
+      toast.success('Project deleted')
+      setShowDeleteConfirm(false)
+    } catch (err) {
+      toast.error(err.response?.data?.detail ?? 'Failed to delete project')
+    }
+  }
+
+  return (
+    <>
+      <div className="flex gap-0 items-stretch">
+        {bulkMode && (
+          <button
+            type="button"
+            onClick={() => onToggleSelect(project.id)}
+            className="flex items-center px-2 rounded-l-xl border border-r-0 shrink-0"
+            style={{
+              backgroundColor: isSelected ? 'rgba(99,102,241,0.1)' : 'var(--bg-card)',
+              borderColor: 'var(--border)',
+              color: isSelected ? 'var(--accent)' : 'var(--text-secondary)',
+            }}
+          >
+            {isSelected ? <CheckSquare size={18} /> : <Square size={18} />}
+          </button>
+        )}
+        <div
+          className={`flex-1 border overflow-hidden ${bulkMode ? 'rounded-r-xl' : 'rounded-xl'}`}
+          style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--border)' }}
+        >
+          <div className="p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                  <h3 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                    {project.name}
+                  </h3>
+                  <span className="text-xs px-1.5 py-0.5 rounded-full font-medium"
+                    style={{ backgroundColor: ps.bg, color: ps.color }}>
+                    {ps.label}
+                  </span>
+                </div>
+                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>@{project.slug}</p>
+                {project.description && (
+                  <p className="text-sm mt-1.5 line-clamp-2" style={{ color: 'var(--text-secondary)' }}>
+                    {project.description}
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  onClick={() => setShowEdit(true)}
+                  className="p-1.5 rounded-md transition-colors"
+                  style={{ color: 'var(--text-secondary)' }}
+                  title="Edit project"
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--bg-hover)'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                >
+                  <Pencil size={14} />
+                </button>
+                <button
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="p-1.5 rounded-md transition-colors"
+                  style={{ color: 'var(--text-secondary)' }}
+                  title="Delete project"
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = 'rgba(239,68,68,0.1)'
+                    e.currentTarget.style.color = 'var(--danger)'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'transparent'
+                    e.currentTarget.style.color = 'var(--text-secondary)'
+                  }}
+                >
+                  <Trash2 size={14} />
+                </button>
+                <button
+                  onClick={() => setExpanded((v) => !v)}
+                  className="p-1.5 rounded-md transition-colors"
+                  style={{ backgroundColor: 'var(--bg-hover)', color: 'var(--text-secondary)' }}
+                >
+                  {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                </button>
+              </div>
+            </div>
+            <div className="flex items-center justify-between mt-3 text-xs"
+              style={{ color: 'var(--text-secondary)' }}>
+              <span>{project.ticket_count ?? 0} ticket{project.ticket_count !== 1 ? 's' : ''}</span>
+              <span>Created {safeFormat(project.created_at)}</span>
+            </div>
+          </div>
+          {expanded && (
+            <div className="border-t" style={{ borderColor: 'var(--border)' }}>
+              <ProjectStatsPanel projectId={project.id} />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {showEdit && <EditProjectModal project={project} onClose={() => setShowEdit(false)} />}
+      {showDeleteConfirm && (
+        <ConfirmDeleteModal
+          title="Delete Project"
+          message={`Are you sure you want to delete "${project.name}"? This will permanently delete all sprints, tickets, comments, and related data.`}
+          onConfirm={handleDelete}
+          onClose={() => setShowDeleteConfirm(false)}
+          isPending={deleteProject.isPending}
+        />
       )}
-    </div>
+    </>
   )
 }
 
@@ -192,13 +435,6 @@ function CreateProjectModal({ onClose }) {
       toast.error(err.response?.data?.detail ?? 'Failed to create project')
     }
   }
-
-  const inputStyle = {
-    backgroundColor: 'var(--bg-primary)',
-    border: '1px solid var(--border)',
-    color: 'var(--text-primary)',
-  }
-  const inputClass = "w-full px-3 py-2 rounded-md text-sm outline-none"
 
   return (
     <>
@@ -308,12 +544,80 @@ function CreateProjectModal({ onClose }) {
   )
 }
 
+// ─── Bulk Action Bar ──────────────────────────────────────────────────────────
+
+function BulkActionBar({ selectedCount, onDelete, onClear, isPending }) {
+  return (
+    <div className="flex items-center justify-between px-4 py-2.5 rounded-xl border"
+      style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--accent)' }}>
+      <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+        {selectedCount} project{selectedCount !== 1 ? 's' : ''} selected
+      </span>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={onClear}
+          className="px-3 py-1.5 rounded-md text-sm font-medium border"
+          style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)', backgroundColor: 'transparent' }}
+        >
+          Clear
+        </button>
+        <button
+          onClick={onDelete}
+          disabled={isPending}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium text-white disabled:opacity-50"
+          style={{ backgroundColor: 'var(--danger)' }}
+        >
+          <Trash2 size={14} />
+          {isPending ? 'Deleting...' : 'Delete Selected'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ─── main page ────────────────────────────────────────────────────────────────
 
 export default function ProjectsPage() {
   const [showCreate, setShowCreate] = useState(false)
+  const [bulkMode, setBulkMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState(new Set())
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false)
   const { data, isLoading, isError } = useProjects()
+  const bulkDelete = useBulkDeleteProjects()
   const projects = data?.data ?? []
+
+  function toggleSelect(id) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function toggleSelectAll() {
+    if (selectedIds.size === projects.length) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(projects.map((p) => p.id)))
+    }
+  }
+
+  function exitBulkMode() {
+    setBulkMode(false)
+    setSelectedIds(new Set())
+  }
+
+  async function handleBulkDelete() {
+    try {
+      await bulkDelete.mutateAsync([...selectedIds])
+      toast.success(`Deleted ${selectedIds.size} project${selectedIds.size !== 1 ? 's' : ''}`)
+      setShowBulkDeleteConfirm(false)
+      exitBulkMode()
+    } catch (err) {
+      toast.error(err.response?.data?.detail ?? 'Failed to delete projects')
+    }
+  }
 
   return (
     <div className="space-y-5 pb-8">
@@ -324,15 +628,53 @@ export default function ProjectsPage() {
             {isLoading ? '...' : `${projects.length} project${projects.length !== 1 ? 's' : ''}`}
           </p>
         </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium text-white"
-          style={{ backgroundColor: 'var(--accent)' }}
-        >
-          <Plus size={15} />
-          New Project
-        </button>
+        <div className="flex items-center gap-2">
+          {projects.length > 0 && (
+            <button
+              onClick={() => bulkMode ? exitBulkMode() : setBulkMode(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border"
+              style={{
+                borderColor: bulkMode ? 'var(--accent)' : 'var(--border)',
+                color: bulkMode ? 'var(--accent)' : 'var(--text-secondary)',
+                backgroundColor: bulkMode ? 'rgba(99,102,241,0.1)' : 'transparent',
+              }}
+            >
+              <CheckSquare size={15} />
+              {bulkMode ? 'Cancel' : 'Select'}
+            </button>
+          )}
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium text-white"
+            style={{ backgroundColor: 'var(--accent)' }}
+          >
+            <Plus size={15} />
+            New Project
+          </button>
+        </div>
       </div>
+
+      {bulkMode && selectedIds.size > 0 && (
+        <BulkActionBar
+          selectedCount={selectedIds.size}
+          onDelete={() => setShowBulkDeleteConfirm(true)}
+          onClear={() => setSelectedIds(new Set())}
+          isPending={bulkDelete.isPending}
+        />
+      )}
+
+      {bulkMode && projects.length > 0 && (
+        <div className="flex items-center gap-2">
+          <button
+            onClick={toggleSelectAll}
+            className="flex items-center gap-1.5 text-xs font-medium"
+            style={{ color: 'var(--text-secondary)' }}
+          >
+            {selectedIds.size === projects.length ? <CheckSquare size={14} /> : <Square size={14} />}
+            {selectedIds.size === projects.length ? 'Deselect all' : 'Select all'}
+          </button>
+        </div>
+      )}
 
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -357,11 +699,28 @@ export default function ProjectsPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {projects.map((p) => <ProjectCard key={p.id} project={p} />)}
+          {projects.map((p) => (
+            <ProjectCard
+              key={p.id}
+              project={p}
+              isSelected={selectedIds.has(p.id)}
+              onToggleSelect={toggleSelect}
+              bulkMode={bulkMode}
+            />
+          ))}
         </div>
       )}
 
       {showCreate && <CreateProjectModal onClose={() => setShowCreate(false)} />}
+      {showBulkDeleteConfirm && (
+        <ConfirmDeleteModal
+          title="Delete Selected Projects"
+          message={`Are you sure you want to delete ${selectedIds.size} project${selectedIds.size !== 1 ? 's' : ''}? This will permanently delete all sprints, tickets, comments, and related data for each project.`}
+          onConfirm={handleBulkDelete}
+          onClose={() => setShowBulkDeleteConfirm(false)}
+          isPending={bulkDelete.isPending}
+        />
+      )}
     </div>
   )
 }

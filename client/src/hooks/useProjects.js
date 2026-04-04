@@ -5,6 +5,7 @@ import {
   createProject,
   updateProject,
   deleteProject,
+  bulkDeleteProjects,
   getProjectStats,
 } from '../api/projects'
 
@@ -56,6 +57,16 @@ export function useDeleteProject() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: deleteProject,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] })
+    },
+  })
+}
+
+export function useBulkDeleteProjects() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (ids) => bulkDeleteProjects(ids),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] })
     },

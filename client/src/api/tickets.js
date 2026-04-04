@@ -84,3 +84,8 @@ export async function bulkStatus(statusData) {
   const { data } = await axiosInstance.post('/tickets/bulk/status', statusData)
   return data
 }
+
+export async function bulkDelete(deleteData) {
+  const { data } = await axiosInstance.post('/tickets/bulk/delete', deleteData)
+  return data
+}

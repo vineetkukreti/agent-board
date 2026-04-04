@@ -13,7 +13,7 @@ function ProjectSelector() {
   const activeProject = useBoardStore((s) => s.activeProject)
   const setActiveProject = useBoardStore((s) => s.setActiveProject)
 
-  const projectList = projects?.items ?? projects ?? []
+  const projectList = Array.isArray(projects) ? projects : (projects?.data ?? projects?.items ?? [])
   const active = projectList.find((p) => p.id === activeProject)
 
   return (
@@ -117,6 +117,17 @@ function UserMenu() {
         <span className="text-[var(--text-primary)] hidden sm:block max-w-24 truncate">
           {user?.username ?? 'User'}
         </span>
+        {user?.role && (
+          <span
+            className="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium"
+            style={{
+              backgroundColor: user.role === 'admin' ? 'var(--danger)' : user.role === 'lead' ? 'var(--accent)' : 'var(--bg-hover)',
+              color: user.role === 'viewer' ? 'var(--text-secondary)' : '#fff',
+            }}
+          >
+            {user.role}
+          </span>
+        )}
         <ChevronDown size={14} className="text-[var(--text-secondary)] hidden sm:block" />
       </button>
 
@@ -130,8 +141,19 @@ function UserMenu() {
         >
           <div className="px-3 py-2 border-b border-[var(--border)]">
             <p className="text-xs text-[var(--text-secondary)]">Signed in as</p>
-            <p className="text-sm font-medium text-[var(--text-primary)] truncate">
+            <p className="text-sm font-medium text-[var(--text-primary)] truncate flex items-center gap-1.5">
               {user?.username}
+              {user?.role && (
+                <span
+                  className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium"
+                  style={{
+                    backgroundColor: user.role === 'admin' ? 'var(--danger)' : user.role === 'lead' ? 'var(--accent)' : 'var(--bg-hover)',
+                    color: user.role === 'viewer' ? 'var(--text-secondary)' : '#fff',
+                  }}
+                >
+                  {user.role}
+                </span>
+              )}
             </p>
           </div>
           <button

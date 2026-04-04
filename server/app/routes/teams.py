@@ -175,8 +175,35 @@ async def delete_team(
     if await cursor.fetchone() is None:
         raise HTTPException(status_code=404, detail="Team not found")
 
+    await db.execute("UPDATE agents SET team_id = NULL WHERE team_id = ?", (team_id,))
     await db.execute("DELETE FROM teams WHERE id = ?", (team_id,))
     await db.commit()
+
+
+class BulkDeleteTeams(BaseModel):
+    team_ids: list[int]
+
+
+@router.post("/bulk/delete")
+async def bulk_delete_teams(
+    body: BulkDeleteTeams,
+    db: aiosqlite.Connection = Depends(get_db),
+    _current: dict = Depends(get_current_admin),
+):
+    if not body.team_ids:
+        raise HTTPException(status_code=422, detail="team_ids cannot be empty")
+
+    placeholders = ",".join("?" * len(body.team_ids))
+    await db.execute(
+        f"UPDATE agents SET team_id = NULL WHERE team_id IN ({placeholders})",
+        body.team_ids,
+    )
+    await db.execute(
+        f"DELETE FROM teams WHERE id IN ({placeholders})",
+        body.team_ids,
+    )
+    await db.commit()
+    return {"deleted": len(body.team_ids)}
 
 
 @router.get("/{team_id}/members")

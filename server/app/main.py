@@ -26,6 +26,8 @@ from app.routes import (
     standups,
     dashboard,
     activity,
+    tracking,
+    github,
 )
 
 load_dotenv()
@@ -88,6 +90,8 @@ app.include_router(sprints.router, prefix="/api/v1/sprints", tags=["sprints"])
 app.include_router(standups.router, prefix="/api/v1/standups", tags=["standups"])
 app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["dashboard"])
 app.include_router(activity.router, prefix="/api/v1/activity", tags=["activity"])
+app.include_router(tracking.router, prefix="/api/v1/tracking", tags=["tracking"])
+app.include_router(github.router, prefix="/api/v1/webhooks", tags=["webhooks"])
 
 
 @app.get("/api/health", tags=["health"])

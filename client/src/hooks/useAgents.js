@@ -6,6 +6,9 @@ import {
   updateAgent,
   heartbeat,
   rotateKey,
+  bulkDeleteAgents,
+  getAgentPerformance,
+  getAgentLeaderboard,
 } from '../api/agents'
 
 export function useAgents(params = {}) {
@@ -61,5 +64,30 @@ export function useRotateKey() {
     onSuccess: (_, id) => {
       queryClient.invalidateQueries({ queryKey: ['agents', id] })
     },
+  })
+}
+
+export function useBulkDeleteAgents() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: bulkDeleteAgents,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['agents'] })
+    },
+  })
+}
+
+export function useAgentPerformance(id) {
+  return useQuery({
+    queryKey: ['agents', id, 'performance'],
+    queryFn: () => getAgentPerformance(id),
+    enabled: !!id,
+  })
+}
+
+export function useAgentLeaderboard() {
+  return useQuery({
+    queryKey: ['agent-leaderboard'],
+    queryFn: getAgentLeaderboard,
   })
 }
