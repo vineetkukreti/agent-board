@@ -24,8 +24,8 @@ cd ~/Desktop/projects/agent-board
 Starts the full Agent Board stack in the correct order:
 
 1. **Kills** any leftover processes on ports 8001 and 5174
-2. **Server** — FastAPI backend (`server/run.py`) on port 8001
-3. **Client** — Vite React dev server (`client/`) on port 5174
+2. **Server** — FastAPI backend (`backend/run.py`) on port 8001
+3. **Client** — Vite React dev server (`frontend/`) on port 5174
 4. **Waits** for the server to be ready (up to 15s)
 5. **Agent Watcher** — scans for Claude Code agents every 30s and auto-registers them
 6. **Flush Daemon** — reads tool usage buffer from `/tmp/agent-board-tool-buffer.jsonl` and POSTs events to the API every 5s
@@ -87,7 +87,7 @@ tail -f /tmp/agent-board-logs/flush.log
 | Component | Process | Port | Interval | Purpose |
 |-----------|---------|------|----------|---------|
 | Server | `python run.py` | 8001 | — | FastAPI backend + SQLite database |
-| Client | `npm run dev` | 5174 | — | React frontend (Vite dev server) |
+| Client | `npm run dev` | 5174 | — | React frontend (Vite dev backend) |
 | Watcher | `agent_watcher.py` | — | 30s | Auto-detects and registers Claude Code agents |
 | Flush Daemon | `flush_daemon.py` | — | 5s | Batches tool usage events and sends to API |
 | Hooks | `track_tools.sh` | — | per event | Claude Code hook that logs agent activity |
@@ -156,7 +156,7 @@ lsof -i :8001
 cat /tmp/agent-board-logs/server.log
 
 # Verify venv exists
-ls server/venv/bin/activate
+ls backend/venv/bin/activate
 ```
 
 ### Client won't start
@@ -169,7 +169,7 @@ lsof -i :5174
 cat /tmp/agent-board-logs/client.log
 
 # Reinstall dependencies
-cd client && npm install
+cd frontend && npm install
 ```
 
 ### Hooks not tracking agents

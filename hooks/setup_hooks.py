@@ -191,7 +191,7 @@ def main() -> None:
     print("Logs will appear in: /tmp/agent-board-hooks.log")
     print("Ticket store (PreToolUse -> PostToolUse pairing): /tmp/agent-board-ticket-store.json")
     print("\nNext steps:")
-    print("  1. Make sure Agent Board server is running: cd server && uvicorn app.main:app --port 8001")
+    print("  1. Make sure Agent Board server is running: cd backend && uvicorn app.main:app --port 8001")
     print("  2. Spawn any agent via the Agent tool or a slash command — a ticket will be auto-created.")
     print("  3. Tail the log to verify: tail -f /tmp/agent-board-hooks.log")
 

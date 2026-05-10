@@ -47,10 +47,14 @@ sid     = os.environ.get('CLAUDE_CODE_SESSION_ID', tuid[:16] if tuid else str(in
 # Extract agent info for Agent tool
 agent_name = ''
 task_desc = ''
+task_title = ''
 if tool == 'Agent':
     agent_name = tinput.get('subagent_type', '') or tinput.get('agent_name', '')
-    prompt = tinput.get('prompt', '') or tinput.get('description', '')
-    task_desc = prompt[:256] if prompt else ''
+    short_desc = tinput.get('description', '') or ''
+    prompt = tinput.get('prompt', '') or ''
+    # Use 'description' (3-5 word summary) as title, full prompt as description
+    task_title = short_desc[:120] if short_desc else ''
+    task_desc = prompt[:500] if prompt else short_desc[:500]
     if not agent_name:
         agent_name = 'subagent'
 
@@ -86,6 +90,7 @@ out = {
     'hook': hook,
     'tool': tool,
     'agent_name': agent_name,
+    'task_title': task_title,
     'task_desc': task_desc,
     'cwd': cwd,
     'session_id': sid,
@@ -122,7 +127,8 @@ import json, sys, urllib.request, urllib.error
 parsed = json.loads(sys.argv[1])
 payload = json.dumps({
     'agent_name': parsed.get('agent_name', ''),
-    'task_description': parsed.get('task_desc', '')[:256],
+    'task_title': parsed.get('task_title', '')[:120],
+    'task_description': parsed.get('task_desc', '')[:500],
     'cwd': parsed.get('cwd', ''),
     'session_id': sys.argv[2],
 }).encode()
@@ -164,24 +170,110 @@ with open(sf, 'w') as f: json.dump(store, f)
     exit 0
 fi
 
-if [[ "$TOOL" == "Agent" && "$HOOK" == "PostToolUse" ]]; then
+if [[ "$TOOL" == "Agent" && ( "$HOOK" == "PostToolUse" || "$HOOK" == "SubagentStop" ) ]]; then
     if [[ -n "$SID" ]]; then
-        # End the session with permanent API key
+        # Extract meaningful summary from the agent's result
         python3 -c "
-import json, urllib.request, urllib.error, sys
-payload = json.dumps({'status':'completed','summary':'Agent task completed'}).encode()
+import json, urllib.request, urllib.error, sys, os
+
+parsed = json.loads(sys.argv[1])
+hook = parsed.get('hook', '')
+
+# Extract summary from tool_response or last_assistant_message
+status = 'completed'
+summary = ''
+
+def truncate(text, max_chars=500, max_lines=15):
+    if not text:
+        return ''
+    lines = [l.strip() for l in text.strip().splitlines() if l.strip()]
+    out = '\n'.join(lines[:max_lines])
+    if len(out) > max_chars:
+        out = out[:max_chars] + '...'
+    return out
+
+try:
+    raw_input = sys.argv[6]
+    data = json.loads(raw_input)
+
+    if hook == 'SubagentStop':
+        # SubagentStop has last_assistant_message with actual output
+        msg = data.get('last_assistant_message', '')
+        if msg:
+            summary = truncate(msg)
+    else:
+        # PostToolUse — tool_response has the agent's result
+        result = data.get('tool_response', '')
+
+        if isinstance(result, str) and result:
+            summary = truncate(result)
+        elif isinstance(result, dict):
+            # Try to find actual text content, not the raw dict
+            for key in ('summary', 'message', 'result', 'output', 'content'):
+                if result.get(key) and isinstance(result[key], str):
+                    summary = truncate(result[key])
+                    break
+            if not summary:
+                # Last resort: look for the longest string value (likely the actual output)
+                texts = [(k, v) for k, v in result.items()
+                         if isinstance(v, str) and len(v) > 20 and k != 'prompt']
+                if texts:
+                    texts.sort(key=lambda x: len(x[1]), reverse=True)
+                    summary = truncate(texts[0][1])
+except Exception:
+    pass
+
+# Extract tokens from transcript JSONL
+tokens = {'input': 0, 'output': 0, 'cache_read': 0, 'cache_write': 0}
+try:
+    raw_input = sys.argv[6]
+    data = json.loads(raw_input)
+    # For subagents use agent_transcript_path; for main session use transcript_path
+    transcript = data.get('agent_transcript_path', '') or data.get('transcript_path', '')
+    if transcript and os.path.exists(transcript):
+        with open(transcript) as f:
+            for line in f:
+                try:
+                    msg = json.loads(line)
+                    usage = msg.get('usage', {})
+                    if usage:
+                        tokens['input'] = max(tokens['input'], usage.get('input_tokens', 0))
+                        tokens['output'] += usage.get('output_tokens', 0)
+                        tokens['cache_read'] = max(tokens['cache_read'], usage.get('cache_read_input_tokens', 0))
+                        tokens['cache_write'] = max(tokens['cache_write'], usage.get('cache_creation_input_tokens', 0))
+                except:
+                    pass
+except Exception:
+    pass
+
+if not summary:
+    summary = 'Task completed'
+
+# Check for errors
+if parsed.get('is_error'):
+    status = 'error'
+    summary = parsed.get('error_msg', '') or summary
+
+payload = json.dumps({
+    'status': status,
+    'summary': summary,
+    'input_tokens': tokens['input'],
+    'output_tokens': tokens['output'],
+    'cache_read_tokens': tokens['cache_read'],
+    'cache_write_tokens': tokens['cache_write'],
+}).encode()
 req = urllib.request.Request(
-    sys.argv[1] + '/tracking/sessions/' + sys.argv[2] + '/end',
+    sys.argv[2] + '/tracking/sessions/' + sys.argv[3] + '/end',
     data=payload,
-    headers={'Content-Type': 'application/json', 'Authorization': 'Bearer ' + sys.argv[3]},
+    headers={'Content-Type': 'application/json', 'Authorization': 'Bearer ' + sys.argv[4]},
     method='POST',
 )
 try:
     with urllib.request.urlopen(req, timeout=6) as resp:
         pass
 except: pass
-" "$API" "$SID" "$HOOK_API_KEY" 2>/dev/null || true
-        log "SESSION-END: session=$SID"
+" "$RESULT" "$API" "$SID" "$HOOK_API_KEY" "" "$INPUT" 2>/dev/null || true
+        log "SESSION-END: session=$SID hook=$HOOK"
     fi
     exit 0
 fi

@@ -7,7 +7,7 @@ Each agent picks up their assigned tickets, works through the lifecycle
 delays between actions so you can watch it live on the dashboard.
 
 Usage:
-    cd server && source venv/bin/activate
+    cd backend && source venv/bin/activate
     python ../tools/run_sprint.py
 """
 

@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: agent-board-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: python run.py
+    healthCheckPath: /api/health
+    envVars:
+      - key: DB_PATH
+        value: /var/data/agent-board.db
+      - key: CORS_ORIGINS
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: ADMIN_USERNAME
+        value: admin
+      - key: ADMIN_PASSWORD
+        sync: false
+    disk:
+      name: agent-board-data
+      mountPath: /var/data
+      sizeGB: 1

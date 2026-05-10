@@ -38,7 +38,7 @@ Add to `.claude/settings.json` (project-level) or `~/.claude/settings.json` (glo
   "mcpServers": {
     "agent-board": {
       "command": "node",
-      "args": ["/home/vineet/Desktop/projects/agent-board/mcp-server/index.js"],
+      "args": ["/home/vineet/Desktop/projects/agent-board/mcp-backend/index.js"],
       "env": {
         "AGENT_BOARD_API_KEY": "your-agent-api-key-here",
         "AGENT_BOARD_AGENT_NAME": "omkar",
@@ -56,7 +56,7 @@ Or if you want each agent to supply their own credentials via `settings.local.js
   "mcpServers": {
     "agent-board": {
       "command": "node",
-      "args": ["/home/vineet/Desktop/projects/agent-board/mcp-server/index.js"],
+      "args": ["/home/vineet/Desktop/projects/agent-board/mcp-backend/index.js"],
       "env": {
         "AGENT_BOARD_API_KEY": "YOUR_KEY",
         "AGENT_BOARD_AGENT_NAME": "YOUR_AGENT_NAME"

@@ -76,18 +76,15 @@ def post_events(api_key: str, events: list[dict]) -> bool:
         return False
 
 
-def read_and_clear_buffer() -> list[dict]:
-    """Read all lines from buffer and clear it. Returns parsed events."""
+def read_buffer() -> tuple[str, list[dict]]:
+    """Read all lines from buffer. Returns (raw_content, parsed_events)."""
     if not BUFFER_FILE.exists():
-        return []
+        return "", []
 
     try:
         content = BUFFER_FILE.read_text()
         if not content.strip():
-            return []
-
-        # Clear the file atomically
-        BUFFER_FILE.write_text("")
+            return "", []
 
         events = []
         for line in content.strip().splitlines():
@@ -108,24 +105,77 @@ def read_and_clear_buffer() -> list[dict]:
             except json.JSONDecodeError:
                 continue
 
-        return events
+        return content, events
     except Exception as e:
         log(f"Buffer read error: {e}")
-        return []
+        return "", []
+
+
+def clear_buffer(old_content: str) -> None:
+    """Clear only the content we already read — preserve any new lines appended since."""
+    try:
+        current = BUFFER_FILE.read_text()
+        if current == old_content:
+            BUFFER_FILE.write_text("")
+        else:
+            # New events were appended while we were posting — keep them
+            remaining = current[len(old_content):]
+            BUFFER_FILE.write_text(remaining)
+    except Exception:
+        pass
+
+
+STALENESS_INTERVAL = 60  # Check staleness every 60 seconds
+DB_PATH = Path(__file__).parent.parent / "backend" / "data" / "agent-board.db"
+
+
+def mark_stale_agents() -> None:
+    """Mark agents as offline if not seen in 5 minutes. Close orphaned sessions older than 1 hour."""
+    import sqlite3
+    if not DB_PATH.exists():
+        return
+    try:
+        db = sqlite3.connect(str(DB_PATH), timeout=3)
+        c = db.execute(
+            "UPDATE agents SET status = 'offline' "
+            "WHERE status = 'active' AND last_seen_at IS NOT NULL "
+            "AND last_seen_at < datetime('now', '-5 minutes')"
+        )
+        if c.rowcount > 0:
+            log(f"Marked {c.rowcount} stale agents as offline")
+        c2 = db.execute(
+            "UPDATE agent_sessions SET status = 'completed', ended_at = datetime('now'), "
+            "summary = 'Auto-closed: orphaned session' "
+            "WHERE status = 'active' AND started_at < datetime('now', '-1 hour')"
+        )
+        if c2.rowcount > 0:
+            log(f"Closed {c2.rowcount} orphaned sessions")
+        db.commit()
+        db.close()
+    except Exception as e:
+        log(f"Staleness check error: {e}")
 
 
 def run_loop():
     """Main flush loop."""
     log(f"Flush daemon started (interval={INTERVAL}s, using permanent API key)")
+    staleness_counter = 0
 
     while True:
         try:
-            events = read_and_clear_buffer()
+            raw_content, events = read_buffer()
             if events:
                 if post_events(HOOK_API_KEY, events):
+                    clear_buffer(raw_content)
                     log(f"Flushed {len(events)} tool events")
                 else:
-                    log(f"Failed to flush {len(events)} events")
+                    log(f"Failed to flush {len(events)} events — will retry")
+
+            # Periodically mark stale agents as offline
+            staleness_counter += INTERVAL
+            if staleness_counter >= STALENESS_INTERVAL:
+                staleness_counter = 0
+                mark_stale_agents()
 
         except KeyboardInterrupt:
             log("Stopped.")

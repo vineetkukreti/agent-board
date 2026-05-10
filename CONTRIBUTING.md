@@ -24,7 +24,7 @@ It is **API-first** — every feature is accessible via REST, so you can integra
 
 ```
 agent-board/
-├── server/          # Python FastAPI + SQLite (port 8001)
+├── backend/          # Python FastAPI + SQLite (port 8001)
 │   ├── app/
 │   │   ├── main.py           # App entry point, CORS, router registration
 │   │   ├── database.py       # SQLite connection (aiosqlite, WAL mode)
@@ -37,7 +37,7 @@ agent-board/
 │       ├── schema.sql        # 15 tables (auto-runs on startup)
 │       └── seed.sql          # Optional seed data
 │
-├── client/          # React 19 + Vite + TailwindCSS 4 (port 5174)
+├── frontend/          # React 19 + Vite + TailwindCSS 4 (port 5174)
 │   └── src/
 │       ├── App.jsx            # Router + protected routes
 │       ├── api/               # Axios wrappers (one file per entity)
@@ -90,14 +90,14 @@ git clone https://github.com/your-org/agent-board.git
 cd agent-board
 
 # Backend
-cd server
+cd backend
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 python run.py          # starts on http://localhost:8001
 
 # Frontend (separate terminal)
-cd client
+cd frontend
 npm install
 npm run dev            # starts on http://localhost:5174
 ```
@@ -120,7 +120,7 @@ The API docs (Swagger UI) are at http://localhost:8001/docs.
 
 ```
 HTTP Request
-  → FastAPI router (server/app/main.py)
+  → FastAPI router (backend/app/main.py)
   → Auth middleware (middleware/auth.py)
       → Agent: Bearer API key → SHA-256 lookup in agents table
       → Admin: Bearer session token → in-memory session dict
@@ -169,12 +169,12 @@ Agent finishes
 
 | File | What it does |
 |------|-------------|
-| `server/app/routes/tickets.py` | Most complex route — full ticket CRUD + state machine (818 lines) |
-| `server/app/routes/tracking.py` | Auto-registration + cost tracking (710 lines) |
-| `server/src/db/schema.sql` | Single source of truth for the DB schema |
-| `server/app/middleware/auth.py` | Both auth paths (agent key + admin session) |
-| `client/src/App.jsx` | All routes and the auth guard |
-| `client/src/api/axiosInstance.js` | Base axios config: auth header + 401 redirect |
+| `backend/app/routes/tickets.py` | Most complex route — full ticket CRUD + state machine (818 lines) |
+| `backend/app/routes/tracking.py` | Auto-registration + cost tracking (710 lines) |
+| `backend/src/db/schema.sql` | Single source of truth for the DB schema |
+| `backend/app/middleware/auth.py` | Both auth paths (agent key + admin session) |
+| `frontend/src/App.jsx` | All routes and the auth guard |
+| `frontend/src/api/axiosInstance.js` | Base axios config: auth header + 401 redirect |
 | `tools/agent_sdk.py` | What external agents import to self-report work |
 
 ---
@@ -199,7 +199,7 @@ Use the dedicated transition endpoints — do not `PUT` the status field directl
 
 ## Database Schema Overview
 
-15 tables in `server/src/db/schema.sql`. Key ones:
+15 tables in `backend/src/db/schema.sql`. Key ones:
 
 | Table | Purpose |
 |-------|---------|
@@ -225,7 +225,7 @@ Foreign key cascades: deleting a project cascades to its tickets, sprints, and s
 
 1. **Add your schema** — Define request/response Pydantic models at the top of the route file (or in `models/schemas.py` if shared).
 
-2. **Write the route handler** in the appropriate `server/app/routes/*.py` file. Use `async def` and `Depends(get_db)`:
+2. **Write the route handler** in the appropriate `backend/app/routes/*.py` file. Use `async def` and `Depends(get_db)`:
    ```python
    @router.post("/", response_model=MyResponse)
    async def create_thing(body: MyCreate, db=Depends(get_db)):
@@ -242,16 +242,16 @@ Foreign key cascades: deleting a project cascades to its tickets, sprints, and s
 5. **Verify in Swagger** — http://localhost:8001/docs auto-generates from your docstrings.
 
 6. **Wire up the client**:
-   - Add a function to `client/src/api/{entity}.js`
-   - Add `useQuery` / `useMutation` hooks to `client/src/hooks/use{Entity}.js`
+   - Add a function to `frontend/src/api/{entity}.js`
+   - Add `useQuery` / `useMutation` hooks to `frontend/src/hooks/use{Entity}.js`
    - Call the hook from your page/component
 
 ### Adding a New Frontend Page
 
-1. Create `client/src/pages/{Name}Page.jsx`
-2. Add a route in `client/src/App.jsx` inside the `<AppShell>` block
-3. Add a nav link in `client/src/components/layout/Sidebar.jsx`
-4. Use existing hooks from `client/src/hooks/` — don't call axios directly from pages
+1. Create `frontend/src/pages/{Name}Page.jsx`
+2. Add a route in `frontend/src/App.jsx` inside the `<AppShell>` block
+3. Add a nav link in `frontend/src/components/layout/Sidebar.jsx`
+4. Use existing hooks from `frontend/src/hooks/` — don't call axios directly from pages
 
 ### Adding a New CLI Command
 
@@ -261,9 +261,9 @@ Foreign key cascades: deleting a project cascades to its tickets, sprints, and s
 
 ### Modifying the Database Schema
 
-1. Edit `server/src/db/schema.sql` — this is the source of truth
+1. Edit `backend/src/db/schema.sql` — this is the source of truth
 2. The schema runs on `init_db()` which fires on server startup
-3. For an existing database, either delete `server/data/agent-board.db` (dev only) or write a migration script
+3. For an existing database, either delete `backend/data/agent-board.db` (dev only) or write a migration script
 4. There is currently no migration framework — changes are applied manually
 
 ---
@@ -326,7 +326,7 @@ curl http://localhost:8001/api/health
 
 **Reset the database (dev only):**
 ```bash
-rm server/data/agent-board.db
+rm backend/data/agent-board.db
 # Restart the server — schema auto-applies
 ```
 

@@ -1,13 +1,13 @@
 # Dependencies
 node_modules/
-server/venv/
+backend/venv/
 
 # Build output
-client/dist/
+frontend/dist/
 
 # Database
 *.db
-server/data/
+backend/data/
 
 # Environment
 .env

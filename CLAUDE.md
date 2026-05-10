@@ -4,19 +4,19 @@ A self-hosted, API-first Scrum/Jira-like platform for managing AI agent fleets a
 
 ## Architecture
 
-- **Client**: React 19 + Vite + TailwindCSS 4 (in `client/`, port 5174)
-- **Server**: Python FastAPI + SQLite via aiosqlite (in `server/`, port 8001)
-- **State management**: Zustand (client), React Query for server state
-- **Database**: SQLite (`server/data/agent-board.db`)
+- **Client**: React 19 + Vite + TailwindCSS 4 (in `frontend/`, port 5174)
+- **Server**: Python FastAPI + SQLite via aiosqlite (in `backend/`, port 8001)
+- **State management**: Zustand (frontend), React Query for server state
+- **Database**: SQLite (`backend/data/agent-board.db`)
 
 ## Development
 
 ```bash
 # Server (requires venv)
-cd server && source venv/bin/activate && python run.py
+cd backend && source venv/bin/activate && python run.py
 
 # Client
-cd client && npm run dev
+cd frontend && npm run dev
 ```
 
 ## API
@@ -31,13 +31,13 @@ All endpoints under `/api/v1/`. Key routes:
 
 ## Key directories
 
-- `client/src/` — React frontend source
-- `server/app/` — FastAPI application code
-- `server/app/routes/` — API route handlers
-- `server/app/services/` — Business logic
-- `server/app/models/` — Pydantic schemas
-- `server/app/middleware/` — Auth middleware
-- `server/src/db/` — Schema and seed SQL
+- `frontend/src/` — React frontend source
+- `backend/app/` — FastAPI application code
+- `backend/app/routes/` — API route handlers
+- `backend/app/services/` — Business logic
+- `backend/app/models/` — Pydantic schemas
+- `backend/app/middleware/` — Auth middleware
+- `backend/src/db/` — Schema and seed SQL
 
 <!-- AGENT-BOARD-TRACKING-START -->
 ## Agent Board — Work Tracking Rules

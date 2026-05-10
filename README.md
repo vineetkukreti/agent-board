@@ -45,7 +45,7 @@ cd agent-board
 ### 2. Backend
 
 ```bash
-cd server
+cd backend
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
@@ -56,7 +56,7 @@ python run.py
 ### 3. Frontend
 
 ```bash
-cd client
+cd frontend
 npm install
 npm run dev
 # UI running at http://localhost:5174
@@ -72,7 +72,7 @@ API docs (Swagger UI) are at **http://localhost:8001/docs**.
 
 ## One-liner Start
 
-If you want everything running at once (server + client + agent watcher + flush daemon):
+If you want everything running at once (backend + frontend + agent watcher + flush daemon):
 
 ```bash
 ./agent-board.sh start
@@ -138,14 +138,14 @@ python3 tools/agent_cli.py done <ticket_id> --summary "Fixed"
 
 ```
 agent-board/
-├── server/              # FastAPI backend
+├── backend/              # FastAPI backend
 │   ├── app/
 │   │   ├── routes/      # 11 API route modules
 │   │   ├── middleware/  # Auth (agent keys + admin sessions)
 │   │   └── models/      # Pydantic schemas
 │   └── src/db/
 │       └── schema.sql   # SQLite schema (15 tables)
-├── client/              # React frontend
+├── frontend/              # React frontend
 │   └── src/
 │       ├── pages/       # 11 route pages
 │       ├── hooks/       # React Query data hooks
@@ -154,6 +154,44 @@ agent-board/
 ├── hooks/               # Claude Code integration hooks
 └── docs/                # Operations runbook
 ```
+
+---
+
+## Deployment
+
+The app is split for two-service deployment:
+
+| Service | Folder | Platform | Build | Start / Output |
+|---------|--------|----------|-------|----------------|
+| Backend API | `backend/` | Render | `pip install -r requirements.txt` | `python run.py` |
+| Frontend UI | `frontend/` | Vercel | `npm run build` | `dist` |
+
+### Render backend
+
+Use the included `render.yaml`, or create a Render Web Service manually:
+
+- **Root Directory:** `backend`
+- **Build Command:** `pip install -r requirements.txt`
+- **Start Command:** `python run.py`
+- **Health Check Path:** `/api/health`
+- **Disk:** mount persistent storage at `/var/data`
+- **Environment:**
+  - `DB_PATH=/var/data/agent-board.db`
+  - `SESSION_SECRET=<strong random secret>`
+  - `ADMIN_USERNAME=<admin username>`
+  - `ADMIN_PASSWORD=<admin password>`
+  - `CORS_ORIGINS=https://<your-vercel-app>.vercel.app`
+
+### Vercel frontend
+
+Create a Vercel project with **Root Directory** set to `frontend`.
+
+Set these environment variables in Vercel:
+
+- `VITE_API_BASE_URL=https://<your-render-service>.onrender.com/api/v1`
+- `VITE_SOCKET_URL=https://<your-render-service>.onrender.com`
+
+For local development you can copy `frontend/.env.example` to `frontend/.env.local`.
 
 ---
 

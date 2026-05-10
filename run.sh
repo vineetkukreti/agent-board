@@ -11,16 +11,16 @@ done
 sleep 1
 
 # Server
-(cd server && source venv/bin/activate && python run.py) &
+(cd backend && source venv/bin/activate && python run.py) &
 
 # Client
-(cd client && npm run dev) &
+(cd frontend && npm run dev) &
 
 # Wait for server to be ready
 sleep 3
 
 # Agent watcher (auto-detect & register agents every 30s)
-(cd server && source venv/bin/activate && python ../tools/agent_watcher.py --interval 30) &
+(cd backend && source venv/bin/activate && python ../tools/agent_watcher.py --interval 30) &
 
 # Flush daemon (buffer tool usage events to API every 5s)
 python3 hooks/flush_daemon.py &

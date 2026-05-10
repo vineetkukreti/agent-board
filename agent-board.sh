@@ -2,7 +2,7 @@
 # agent-board.sh — Start, stop, and check status of the Agent Board stack.
 #
 # Usage:
-#   ./agent-board.sh start    — Start server, client, watcher, flush daemon, and install hooks
+#   ./agent-board.sh start    — Start backend, frontend, watcher, flush daemon, and install hooks
 #   ./agent-board.sh stop     — Stop all components
 #   ./agent-board.sh restart  — Stop then start
 #   ./agent-board.sh status   — Show what's running
@@ -119,21 +119,21 @@ do_start() {
   kill_by_port $SERVER_PORT
   kill_by_port $CLIENT_PORT
 
-  # --- Server ---
+# --- Backend ---
   if is_running "$PID_SERVER"; then
     echo -e "  ${YELLOW}■${NC} Server already running (pid $(cat "$PID_SERVER"))"
   else
-    (cd "$DIR/server" && source venv/bin/activate && python run.py) \
+    (cd "$DIR/backend" && source venv/bin/activate && python run.py) \
       > "$LOG_SERVER" 2>&1 &
     echo $! > "$PID_SERVER"
     echo -e "  ${GREEN}■${NC} Server starting on port $SERVER_PORT..."
   fi
 
-  # --- Client ---
+# --- Frontend ---
   if is_running "$PID_CLIENT"; then
     echo -e "  ${YELLOW}■${NC} Client already running (pid $(cat "$PID_CLIENT"))"
   else
-    (cd "$DIR/client" && npm run dev) \
+    (cd "$DIR/frontend" && npm run dev) \
       > "$LOG_CLIENT" 2>&1 &
     echo $! > "$PID_CLIENT"
     echo -e "  ${GREEN}■${NC} Client starting on port $CLIENT_PORT..."
@@ -151,7 +151,7 @@ do_start() {
   if is_running "$PID_WATCHER"; then
     echo -e "  ${YELLOW}■${NC} Watcher already running (pid $(cat "$PID_WATCHER"))"
   else
-    (cd "$DIR/server" && source venv/bin/activate && python ../tools/agent_watcher.py --interval 30) \
+    (cd "$DIR/backend" && source venv/bin/activate && python ../tools/agent_watcher.py --interval 30) \
       > "$LOG_WATCHER" 2>&1 &
     echo $! > "$PID_WATCHER"
     echo -e "  ${GREEN}■${NC} Agent watcher started (every 30s)"
@@ -277,7 +277,7 @@ case "${1:-}" in
   *)
     echo "Usage: ./agent-board.sh {start|stop|restart|status|logs}"
     echo ""
-    echo "  start    Start server, client, watcher, flush daemon & hooks"
+    echo "  start    Start backend, frontend, watcher, flush daemon & hooks"
     echo "  stop     Stop all components"
     echo "  restart  Stop then start everything"
     echo "  status   Show what's running"
