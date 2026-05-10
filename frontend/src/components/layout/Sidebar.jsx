@@ -1,31 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import clsx from 'clsx'
-import {
-  LayoutDashboard,
-  Kanban,
-  Users,
-  UsersRound,
-  FolderKanban,
-  Zap,
-  MessageSquare,
-  Activity,
-  Settings,
-  ChevronLeft,
-  Trophy,
-} from 'lucide-react'
-
-const NAV_ITEMS = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/board', label: 'Board', icon: Kanban },
-  { to: '/agents', label: 'Agents', icon: Users },
-  { to: '/leaderboard', label: 'Leaderboard', icon: Trophy },
-  { to: '/teams', label: 'Teams', icon: UsersRound },
-  { to: '/projects', label: 'Projects', icon: FolderKanban },
-  { to: '/sprints', label: 'Sprints', icon: Zap },
-  { to: '/standups', label: 'Standups', icon: MessageSquare },
-  { to: '/activity', label: 'Activity', icon: Activity },
-  { to: '/settings', label: 'Settings', icon: Settings },
-]
+import { ChevronLeft } from 'lucide-react'
+import { NAV_ITEMS } from '../../app/navigation'
 
 export default function Sidebar({ open, onToggle }) {
   return (
@@ -68,8 +44,8 @@ export default function Sidebar({ open, onToggle }) {
           const NavIcon = item.icon
           return (
             <NavLink
-              key={item.to}
-              to={item.to}
+              key={item.path}
+              to={item.path}
               end={item.end}
               className={({ isActive }) =>
                 clsx(

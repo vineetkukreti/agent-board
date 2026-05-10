@@ -123,9 +123,7 @@ do_start() {
   if is_running "$PID_SERVER"; then
     echo -e "  ${YELLOW}■${NC} Server already running (pid $(cat "$PID_SERVER"))"
   else
-    (cd "$DIR/backend" && source venv/bin/activate && python run.py) \
-      > "$LOG_SERVER" 2>&1 &
-    echo $! > "$PID_SERVER"
+    (cd "$DIR/backend" && nohup ./venv/bin/python run.py > "$LOG_SERVER" 2>&1 & echo $! > "$PID_SERVER")
     echo -e "  ${GREEN}■${NC} Server starting on port $SERVER_PORT..."
   fi
 
@@ -133,9 +131,7 @@ do_start() {
   if is_running "$PID_CLIENT"; then
     echo -e "  ${YELLOW}■${NC} Client already running (pid $(cat "$PID_CLIENT"))"
   else
-    (cd "$DIR/frontend" && npm run dev) \
-      > "$LOG_CLIENT" 2>&1 &
-    echo $! > "$PID_CLIENT"
+    (cd "$DIR/frontend" && nohup npm run dev > "$LOG_CLIENT" 2>&1 & echo $! > "$PID_CLIENT")
     echo -e "  ${GREEN}■${NC} Client starting on port $CLIENT_PORT..."
   fi
 
@@ -151,9 +147,7 @@ do_start() {
   if is_running "$PID_WATCHER"; then
     echo -e "  ${YELLOW}■${NC} Watcher already running (pid $(cat "$PID_WATCHER"))"
   else
-    (cd "$DIR/backend" && source venv/bin/activate && python ../tools/agent_watcher.py --interval 30) \
-      > "$LOG_WATCHER" 2>&1 &
-    echo $! > "$PID_WATCHER"
+    (cd "$DIR/backend" && nohup ./venv/bin/python ../tools/agent_watcher.py --interval 30 > "$LOG_WATCHER" 2>&1 & echo $! > "$PID_WATCHER")
     echo -e "  ${GREEN}■${NC} Agent watcher started (every 30s)"
   fi
 
@@ -161,8 +155,7 @@ do_start() {
   if is_running "$PID_FLUSH"; then
     echo -e "  ${YELLOW}■${NC} Flush daemon already running (pid $(cat "$PID_FLUSH"))"
   else
-    python3 "$DIR/hooks/flush_daemon.py" \
-      > "$LOG_FLUSH" 2>&1 &
+    nohup python3 "$DIR/hooks/flush_daemon.py" > "$LOG_FLUSH" 2>&1 &
     echo $! > "$PID_FLUSH"
     echo -e "  ${GREEN}■${NC} Flush daemon started (every 5s)"
   fi

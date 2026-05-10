@@ -842,10 +842,8 @@ function TraceTab({ ticketId }) {
   )
 }
 
-function TicketDetailModal({ ticket: baseTicket, onClose, agents: allAgents, projects: allProjects }) {
-  if (!baseTicket) return null
-
-  const { data: fullTicket } = useTicket(baseTicket.id)
+function TicketDetailModal({ ticket: baseTicket, onClose, agents: allAgents }) {
+  const { data: fullTicket } = useTicket(baseTicket?.id)
   const ticket = fullTicket ?? baseTicket
   const updateTicket = useUpdateTicket()
   const deleteTicket = useDeleteTicket()
@@ -854,6 +852,8 @@ function TicketDetailModal({ ticket: baseTicket, onClose, agents: allAgents, pro
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [activeTab, setActiveTab] = useState('details')
   const [form, setForm] = useState(null)
+
+  if (!ticket) return null
 
   function startEdit() {
     setForm({
@@ -906,7 +906,7 @@ function TicketDetailModal({ ticket: baseTicket, onClose, agents: allAgents, pro
   const closedDate = ticket.closed_at ? new Date(ticket.closed_at).toLocaleString() : null
 
   let tags = []
-  try { tags = JSON.parse(ticket.tags || '[]') } catch {}
+  try { tags = JSON.parse(ticket.tags || '[]') } catch { tags = [] }
 
   const inputStyle = {
     backgroundColor: 'var(--bg-primary)',
@@ -1118,7 +1118,11 @@ function TicketDetailModal({ ticket: baseTicket, onClose, agents: allAgents, pro
               {/* GitHub PR link */}
               {(() => {
                 let meta = {}
-                try { meta = typeof ticket.metadata === 'string' ? JSON.parse(ticket.metadata) : (ticket.metadata || {}) } catch {}
+                try {
+                  meta = typeof ticket.metadata === 'string' ? JSON.parse(ticket.metadata) : (ticket.metadata || {})
+                } catch {
+                  meta = {}
+                }
                 if (!meta.pr_url) return null
                 const status = meta.pr_status || 'open'
                 const colors = PR_STATUS_COLORS[status] || PR_STATUS_COLORS.open
@@ -1696,7 +1700,6 @@ export default function BoardPage() {
           ticket={selectedTicket}
           onClose={() => setSelectedTicket(null)}
           agents={agents}
-          projects={projects}
         />
       )}
 

@@ -64,7 +64,9 @@ npm run dev
 
 ### 4. Open the dashboard
 
-Go to **http://localhost:5174** and log in with `admin` / `admin`.
+Go to **http://localhost:5174**.
+
+On a fresh database, the login page will ask you to create the first admin account. After that, sign in with that admin user.
 
 API docs (Swagger UI) are at **http://localhost:8001/docs**.
 
@@ -154,6 +156,15 @@ agent-board/
 ├── hooks/               # Claude Code integration hooks
 └── docs/                # Operations runbook
 ```
+
+---
+
+## Documentation
+
+- [Full user and operator guide](docs/user-guide.md) — what Agent Board is, how to use every screen, workflows, agent tracking, API, deployment, and troubleshooting.
+- [Architecture guide](docs/architecture.md) — where frontend/backend code belongs, route registration, and contribution rules.
+- [Operations guide](docs/operations.md) — local process manager, logs, hooks, watcher, flush daemon, and common local debugging commands.
+- [Contributing guide](CONTRIBUTING.md) — architecture walkthrough and contribution guidelines.
 
 ---
 

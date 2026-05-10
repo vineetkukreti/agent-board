@@ -9,7 +9,10 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "video:studio": "remotion studio src/remotion/index.jsx",
-    "video:render": "remotion render src/remotion/index.jsx agent-board-demo ../agent-board-demo.mp4"
+    "video:render": "remotion render src/remotion/index.jsx agent-board-demo ../agent-board-demo.mp4",
+    "video:render:full-tour": "remotion render src/remotion/index.jsx agent-board-full-screen-tour ../marketing-video-launch/full-screen-demo/agent-board-full-screen-tour.mp4",
+    "video:render:animated-tour": "remotion render src/remotion/index.jsx agent-board-animated-tour ../marketing-video-launch/animated-tour/agent-board-animated-tour.mp4",
+    "video:render:animated-tour-fast": "remotion render src/remotion/index.jsx agent-board-animated-tour ../marketing-video-launch/animated-tour-fast/agent-board-animated-tour-fast.mp4"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

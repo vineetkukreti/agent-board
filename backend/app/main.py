@@ -5,32 +5,18 @@ Agent Board — FastAPI application entry point.
 from __future__ import annotations
 
 import logging
-import traceback
 import os
+import traceback
 from contextlib import asynccontextmanager
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from dotenv import load_dotenv
 
 from app.database import init_db
 from app.realtime import sio_app
-from app.routes import (
-    auth_routes,
-    agents,
-    agent_types,
-    teams,
-    projects,
-    tickets,
-    sprints,
-    standups,
-    dashboard,
-    activity,
-    tracking,
-    github,
-    webhooks,
-)
+from app.routing import register_api_routes
 
 load_dotenv()
 
@@ -89,20 +75,7 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
     )
 
 
-# Routers
-app.include_router(auth_routes.router, prefix="/api/v1/auth", tags=["auth"])
-app.include_router(agents.router, prefix="/api/v1/agents", tags=["agents"])
-app.include_router(agent_types.router, prefix="/api/v1/agent-types", tags=["agent-types"])
-app.include_router(teams.router, prefix="/api/v1/teams", tags=["teams"])
-app.include_router(projects.router, prefix="/api/v1/projects", tags=["projects"])
-app.include_router(tickets.router, prefix="/api/v1/tickets", tags=["tickets"])
-app.include_router(sprints.router, prefix="/api/v1/sprints", tags=["sprints"])
-app.include_router(standups.router, prefix="/api/v1/standups", tags=["standups"])
-app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["dashboard"])
-app.include_router(activity.router, prefix="/api/v1/activity", tags=["activity"])
-app.include_router(tracking.router, prefix="/api/v1/tracking", tags=["tracking"])
-app.include_router(github.router, prefix="/api/v1/webhooks", tags=["github-webhooks"])
-app.include_router(webhooks.router, prefix="/api/v1/hooks", tags=["webhooks"])
+register_api_routes(app)
 
 
 @app.get("/api/health", tags=["health"])

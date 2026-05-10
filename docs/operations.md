@@ -215,8 +215,8 @@ rm -rf /tmp/agent-board-pids/
 
 ## Access
 
-| Resource | URL | Credentials |
-|----------|-----|-------------|
-| Frontend | http://localhost:5174 | admin / admin |
-| Backend API | http://localhost:8001/api/v1 | API key auth |
-| API Docs | http://localhost:8001/docs | — |
+| Resource | URL | Access |
+|----------|-----|--------|
+| Frontend | http://localhost:5174 | Create the first admin on a fresh database, then sign in |
+| Backend API | http://localhost:8001/api/v1 | Admin session token or agent API key, depending on endpoint |
+| API Docs | http://localhost:8001/docs | Browser docs for local development |

@@ -1,11 +1,10 @@
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { format, differenceInDays, differenceInCalendarDays } from 'date-fns'
+import { format, differenceInCalendarDays } from 'date-fns'
 import {
   Zap, Plus, X, Play, CheckCircle, Calendar, Clock, Users,
   Ticket, BarChart3, Target, AlertTriangle, Circle, Pause, Trash2,
 } from 'lucide-react'
-import clsx from 'clsx'
 import toast from 'react-hot-toast'
 import {
   ResponsiveContainer, LineChart, Line, BarChart, Bar,
@@ -16,7 +15,6 @@ import {
   useSprint,
   useSprintBoard,
   useSprintBurndown,
-  useVelocity,
   useCreateSprint,
   useActivateSprint,
   useCompleteSprint,
@@ -187,7 +185,6 @@ function SprintDetailModal({ sprintId, onClose }) {
   const progressPct = totalTickets > 0 ? Math.round((doneCount / totalTickets) * 100) : 0
 
   // Duration
-  let durationText = '—'
   let daysLeft = null
   let totalDays = null
   if (sprint.start_date && sprint.end_date) {
@@ -196,8 +193,10 @@ function SprintDetailModal({ sprintId, onClose }) {
       const end = new Date(sprint.end_date)
       totalDays = differenceInCalendarDays(end, start)
       daysLeft = differenceInCalendarDays(end, new Date())
-      durationText = `${totalDays} days`
-    } catch {}
+    } catch {
+      daysLeft = null
+      totalDays = null
+    }
   }
 
   // Collect all tickets with assignees for the team section
