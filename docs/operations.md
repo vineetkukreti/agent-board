@@ -185,6 +185,26 @@ python3 hooks/setup_hooks.py
 cat /tmp/agent-board-hooks.log
 ```
 
+### Agent API keys
+
+`tools/agent_keys.json` is committed only as a dummy placeholder so new
+developers can see the expected shape:
+
+```json
+{
+  "arjun": "replace-with-local-agent-api-key"
+}
+```
+
+Real values are generated locally when agents are registered and must not be
+committed. The file is listed in `.gitignore`; if you generate real keys, keep
+them on your machine only. To refresh local keys, start the backend and run the
+agent seeding or registration tools, for example:
+
+```bash
+python3 tools/seed_agents.py
+```
+
 ### Flush daemon not sending events
 
 ```bash

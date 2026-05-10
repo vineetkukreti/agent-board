@@ -22,6 +22,14 @@ Backend folders:
 - `backend/app/middleware/` contains request authentication and cross-cutting middleware.
 - `backend/src/db/` contains SQLite schema and seed data.
 
+## Local Secrets
+
+`tools/agent_keys.json` is tracked only as a dummy example of the expected
+agent-name-to-key mapping. Real API keys are local runtime data, are ignored by
+`.gitignore`, and should never be pushed. If a developer needs working local
+keys, they should run the local registration or seed tools against their own
+database.
+
 ## Frontend
 
 The frontend app shell is split into three clear layers:
