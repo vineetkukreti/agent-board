@@ -8,6 +8,14 @@ It integrates directly with **Claude Code** — agents auto-register, tickets ge
 
 ---
 
+## Demo
+
+<video src="media/agent-board-demo.mp4" controls width="100%">
+  Your browser does not support the video tag. <a href="media/agent-board-demo.mp4">Download the demo</a>.
+</video>
+
+---
+
 ## Features
 
 - **Agent Fleet Dashboard** — See every agent's status (active / idle / blocked / offline) in real time

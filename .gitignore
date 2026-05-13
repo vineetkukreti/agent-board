@@ -36,6 +36,7 @@ tools/agent_keys.json
 *.m4a
 *.pen
 marketing-video-launch/
+!media/agent-board-demo.mp4
 
 # Logs and reports
 *.log
